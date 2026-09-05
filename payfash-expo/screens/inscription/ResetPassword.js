@@ -14,16 +14,23 @@ export default function ResetPassword() {
   const [Password, setPassword] = useState("");
   const [confirPass, setConfirPass] = useState("");
   const [loading, setLoading] = useState(false);
-  const { email } = route.params;
+  // Le code OTP vient de l'écran de vérification : c'est lui qui prouve que
+  // l'utilisateur a bien accès à cette boîte mail. Le serveur le valide et le
+  // consomme — sans lui, /auth/reset changeait le mot de passe sur la seule
+  // foi d'une adresse email.
+  const { email, OtpCode } = route.params;
 
   const handleValidation = async () => {
     if (loading) return;
     if (Password === "" || confirPass === "" || Password !== confirPass) {
       return Toast.show({ type: "error", text1: "Échec", text2: "Les mots de passe ne correspondent pas", position: "bottom", visibilityTime: 2000 });
     }
+    if (Password.length < 8) {
+      return Toast.show({ type: "error", text1: "Échec", text2: "Le mot de passe doit faire au moins 8 caractères", position: "bottom", visibilityTime: 2000 });
+    }
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/reset`, { email: email, nouveauMotDePasse: Password });
+      const res = await axios.post(`${API_BASE_URL}/auth/reset`, { email, OtpCode, nouveauMotDePasse: Password });
       if (res.status === 200) {
         Toast.show({
           type: "success", text1: "Succès 🎉", text2: "Votre mot de passe a été réinitialisé",

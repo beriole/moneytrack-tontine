@@ -17,9 +17,22 @@ export default function VerifiedOtp() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const handlerValide= async()=>{
      if (loading) return;
+      const code = otp.join("");
+
+      // Réinitialisation de mot de passe : le code n'est PAS consommé ici.
+      // /auth/verifyOtp le détruit et marque le compte vérifié — deux effets
+      // qui n'ont rien à faire sur ce chemin, et qui laissaient ensuite
+      // /auth/reset sans code à valider. Le code est porté jusqu'à l'écran
+      // suivant, qui l'échange contre le changement de mot de passe.
+      if (context === "reset") {
+        if (code.length !== 6) {
+          return Alert.alert("Veuillez entrer le code OTP complet.");
+        }
+        return Navigation.navigate("ResetPassword", { email, OtpCode: code });
+      }
+
        setLoading(true);
       try {
-        const code = otp.join("");
         const res = await axios.post(`${API_BASE_URL}/auth/verifyOtp`, { email, OtpCode: code });
                 console.log("Réponse du serveur :", res.data); 
                   if(res.status===200){
