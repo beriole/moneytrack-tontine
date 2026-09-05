@@ -1,6 +1,6 @@
 const { fn, col, Op } = require('sequelize');
 const { Transaction, Paiement, Client, Portefeuille } = require('../../models/index');
-const { logAction } = require('./audit');
+const { ouvrirDemande } = require('./admin.validation');
 
 // GET /api/admin/transaction/transaction?page&limit&type&statut&search
 const listeTransactions = async (req, res) => {
@@ -104,7 +104,19 @@ const detailsPret = async (req, res) => {
     return res.status(501).json({ success: false, error: 'Module Prêts non implémenté' });
 };
 
-// POST /api/admin/transaction/:id/rembourser  — recrédite le wallet principal du client
+// =====================================================================
+//  Operations financieres sensibles : maker uniquement.
+//
+//  Ces deux routes executaient directement le mouvement, derriere un seul
+//  requireRole('ADMIN_FINANCE'). Elles doublonnaient EXACTEMENT les
+//  executeurs REFUND et WALLET_ADJUST du maker-checker : un administrateur
+//  seul pouvait donc crediter n'importe quel portefeuille, que le client
+//  n'avait plus qu'a encaisser par /paiement/retrait. Elles deposent
+//  desormais une demande, qu'un SECOND administrateur doit approuver via
+//  POST /api/admin/validation/:id/approuver.
+// =====================================================================
+
+// POST /api/admin/transaction/:id/rembourser  — ouvre une demande de remboursement
 const rembourser = async (req, res) => {
     try {
         const tx = await Transaction.findByPk(req.params.id);
@@ -113,25 +125,15 @@ const rembourser = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Transaction déjà remboursée' });
         }
 
-        const clientId = tx.ClientTransactionId;
-        let wallet = await Portefeuille.findOne({ where: { ClientPortefeuilleId: clientId, estPrincipal: true } });
-        if (!wallet) {
-            wallet = await Portefeuille.findOne({ where: { ClientPortefeuilleId: clientId, typePortefeuille: 'courant' } });
-        }
-        if (!wallet) return res.status(404).json({ success: false, error: 'Portefeuille du client introuvable' });
-
-        wallet.solde += tx.montant;
-        await wallet.save();
-
-        const reversal = await Transaction.create({
-            montant: tx.montant, date: new Date(), type: 'remboursement', statut: 'Succès',
-            description: `Remboursement de la transaction #${tx.id}`, frais: 0, ClientTransactionId: clientId
+        const action = await ouvrirDemande(
+            req, 'REFUND', { transactionId: tx.id },
+            req.body?.motif || `Remboursement de la transaction #${tx.id} (${tx.montant})`
+        );
+        return res.status(202).json({
+            success: true,
+            message: "Demande de remboursement enregistrée. Elle doit être approuvée par un autre administrateur.",
+            data: action
         });
-        tx.statut = 'remboursée';
-        await tx.save();
-
-        await logAction(req, 'TRANSACTION_REFUND', `Transaction#${tx.id}`, { montant: tx.montant, walletId: wallet.id });
-        return res.json({ success: true, message: 'Remboursement effectué', data: { reversal, nouveauSolde: wallet.solde } });
     } catch (error) {
         console.error('rembourser:', error);
         return res.status(500).json({ success: false, error: error.message });
@@ -149,19 +151,15 @@ const ajusterWallet = async (req, res) => {
         const wallet = await Portefeuille.findByPk(walletId);
         if (!wallet) return res.status(404).json({ success: false, error: 'Portefeuille introuvable' });
 
-        if (sens === 'debit' && wallet.solde < valeur) {
-            return res.status(400).json({ success: false, error: 'Solde insuffisant pour ce débit' });
-        }
-        wallet.solde += sens === 'credit' ? valeur : -valeur;
-        await wallet.save();
-
-        await Transaction.create({
-            montant: valeur, date: new Date(), type: sens === 'credit' ? 'ajustement_credit' : 'ajustement_debit',
-            statut: 'Succès', description: `Ajustement admin : ${motif || 'n/c'}`, frais: 0,
-            ClientTransactionId: wallet.ClientPortefeuilleId
+        const action = await ouvrirDemande(
+            req, 'WALLET_ADJUST', { walletId: wallet.id, montant: valeur, sens, motif: motif || null },
+            `Ajustement ${sens} de ${valeur} sur le portefeuille #${wallet.id} : ${motif || 'n/c'}`
+        );
+        return res.status(202).json({
+            success: true,
+            message: "Demande d'ajustement enregistrée. Elle doit être approuvée par un autre administrateur.",
+            data: action
         });
-        await logAction(req, 'WALLET_ADJUST', `Portefeuille#${wallet.id}`, { sens, montant: valeur, motif });
-        return res.json({ success: true, message: 'Ajustement effectué', data: { nouveauSolde: wallet.solde } });
     } catch (error) {
         console.error('ajusterWallet:', error);
         return res.status(500).json({ success: false, error: error.message });

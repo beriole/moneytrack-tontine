@@ -8,7 +8,7 @@ router.post("/epargnes",verifyToken,EpargneController.creerEpargne);
 router.get("/epargnes",verifyToken,EpargneController.listerEpargnes);
 
 
-router.post("/epargnes/:epargneId/transactions",EpargneController.ajouterTransaction);
+router.post("/epargnes/:epargneId/transactions",verifyToken,EpargneController.ajouterTransaction);
 
 
 router.delete("/epargnes/:epargneId", verifyToken,EpargneController.supprimerEpargne);

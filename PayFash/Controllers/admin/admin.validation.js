@@ -1,42 +1,77 @@
 // Maker-Checker : les opérations financières sensibles sont créées par un admin (maker)
 // puis exécutées seulement après approbation par un AUTRE admin (checker).
-const { PendingAction, Transaction, Portefeuille } = require('../../models/index');
+const { db, PendingAction, Transaction, Portefeuille } = require('../../models/index');
 const { logAction } = require('./audit');
+
+// Les mouvements internes d'une tontine ne se remboursent pas ici : l'argent
+// est dans une caisse de groupe, pas chez la plateforme. Recrediter le client
+// sans debiter la caisse creerait de la monnaie. Ces operations ont leurs
+// propres voies de sortie (saisie de caution, appel au garant, versement
+// force par le maker-checker).
+const TYPES_NON_REMBOURSABLES = [
+    'cotisation', 'versement', 'caution_blocage', 'caution_saisie', 'caution_liberation',
+    'amende', 'apport_epargne', 'credit_decaissement', 'credit_remboursement',
+    'partage_epargne', 'decote_enchere', 'frais_plateforme', 'appel_garant', 'echange_tour'
+];
 
 // --- Exécuteurs réels (appelés à l'approbation) ---
 async function executeRefund(payload) {
-    const tx = await Transaction.findByPk(payload.transactionId);
-    if (!tx) throw new Error('Transaction introuvable');
-    if (tx.statut === 'remboursée') throw new Error('Transaction déjà remboursée');
+    // Verrouille pour que deux approbations concurrentes ne remboursent pas
+    // deux fois, et rend l'ecriture atomique avec le credit du solde.
+    return db.transaction(async (t) => {
+        const tx = await Transaction.findByPk(payload.transactionId, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!tx) throw new Error('Transaction introuvable');
+        if (tx.statut === 'remboursée') throw new Error('Transaction déjà remboursée');
+        if (tx.groupeTontineId || TYPES_NON_REMBOURSABLES.includes(tx.type)) {
+            throw new Error(`Une ecriture de tontine ne se rembourse pas par cette voie (type "${tx.type}")`);
+        }
+        if (!tx.ClientTransactionId) throw new Error('Transaction sans client rattaché');
 
-    let wallet = await Portefeuille.findOne({ where: { ClientPortefeuilleId: tx.ClientTransactionId, estPrincipal: true } });
-    if (!wallet) wallet = await Portefeuille.findOne({ where: { ClientPortefeuilleId: tx.ClientTransactionId, typePortefeuille: 'courant' } });
-    if (!wallet) throw new Error('Portefeuille introuvable');
+        const base = { ClientPortefeuilleId: tx.ClientTransactionId };
+        const verrou = { transaction: t, lock: t.LOCK.UPDATE };
+        let wallet = await Portefeuille.findOne({ where: { ...base, estPrincipal: true }, ...verrou });
+        if (!wallet) wallet = await Portefeuille.findOne({ where: { ...base, typePortefeuille: 'courant' }, ...verrou });
+        if (!wallet) throw new Error('Portefeuille introuvable');
 
-    wallet.solde += tx.montant;
-    await wallet.save();
-    await Transaction.create({
-        montant: tx.montant, date: new Date(), type: 'remboursement', statut: 'Succès',
-        description: `Remboursement (validé) de la transaction #${tx.id}`, frais: 0, ClientTransactionId: tx.ClientTransactionId
+        await wallet.update({ solde: wallet.solde + tx.montant }, { transaction: t });
+        await Transaction.create({
+            montant: tx.montant, date: new Date(), type: 'remboursement', statut: 'Succès',
+            description: `Remboursement (validé) de la transaction #${tx.id}`, frais: 0,
+            ClientTransactionId: tx.ClientTransactionId
+        }, { transaction: t });
+        await tx.update({ statut: 'remboursée' }, { transaction: t });
+
+        return { nouveauSolde: wallet.solde };
     });
-    tx.statut = 'remboursée';
-    await tx.save();
-    return { nouveauSolde: wallet.solde };
 }
 
 async function executeAdjust(payload) {
     const { walletId, montant, sens, motif } = payload;
-    const wallet = await Portefeuille.findByPk(walletId);
-    if (!wallet) throw new Error('Portefeuille introuvable');
-    if (sens === 'debit' && wallet.solde < montant) throw new Error('Solde insuffisant');
-    wallet.solde += sens === 'credit' ? montant : -montant;
-    await wallet.save();
-    await Transaction.create({
-        montant, date: new Date(), type: sens === 'credit' ? 'ajustement_credit' : 'ajustement_debit',
-        statut: 'Succès', description: `Ajustement validé : ${motif || 'n/c'}`, frais: 0,
-        ClientTransactionId: wallet.ClientPortefeuilleId
+    const valeur = parseFloat(montant);
+    if (!walletId || !(valeur > 0) || !['credit', 'debit'].includes(sens)) {
+        throw new Error('Paramètres invalides (walletId, montant>0, sens credit|debit)');
+    }
+
+    return db.transaction(async (t) => {
+        const wallet = await Portefeuille.findByPk(walletId, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!wallet) throw new Error('Portefeuille introuvable');
+        // Une caisse de tontine n'a pas de proprietaire : l'ecriture serait
+        // orpheline, et le solde du groupe ne correspondrait plus a ses
+        // cotisations. On refuse plutot que de desequilibrer un groupe.
+        if (wallet.typePortefeuille === 'tontine') {
+            throw new Error("Une caisse de tontine ne s'ajuste pas ici : passez par le module tontine");
+        }
+        if (sens === 'debit' && wallet.solde < valeur) throw new Error('Solde insuffisant');
+
+        await wallet.update({ solde: wallet.solde + (sens === 'credit' ? valeur : -valeur) }, { transaction: t });
+        await Transaction.create({
+            montant: valeur, date: new Date(), type: sens === 'credit' ? 'ajustement_credit' : 'ajustement_debit',
+            statut: 'Succès', description: `Ajustement validé : ${motif || 'n/c'}`, frais: 0,
+            ClientTransactionId: wallet.ClientPortefeuilleId
+        }, { transaction: t });
+
+        return { nouveauSolde: wallet.solde };
     });
-    return { nouveauSolde: wallet.solde };
 }
 
 // Versement force d'un pot de tontine.
@@ -91,6 +126,26 @@ const EXECUTORS = {
     TONTINE_VERSEMENT_FORCE: executeVersementTontine
 };
 
+/**
+ * Ouvre le volet « maker » d'une operation sensible.
+ *
+ * Expose separement pour que les anciennes routes d'execution directe
+ * (/transaction/:id/rembourser, /transaction/wallet/ajuster) deposent une
+ * demande au lieu d'agir : elles contournaient le maker-checker que le reste
+ * du back-office impose, alors qu'elles font exactement le meme mouvement.
+ */
+async function ouvrirDemande(req, type, payload, description) {
+    if (!EXECUTORS[type]) throw new Error("Type d'action non supporté");
+    if (!payload) throw new Error('Payload requis');
+
+    const action = await PendingAction.create({
+        type, payload, description: description || null,
+        demandeurId: req.admin.id, demandeurEmail: req.admin.email
+    });
+    await logAction(req, 'PENDING_CREATE', `PendingAction#${action.id}`, { type });
+    return action;
+}
+
 // POST /api/admin/validation/demande   body: { type, payload, description }
 const creerDemande = async (req, res) => {
     try {
@@ -100,11 +155,7 @@ const creerDemande = async (req, res) => {
         }
         if (!payload) return res.status(400).json({ success: false, error: 'Payload requis' });
 
-        const action = await PendingAction.create({
-            type, payload, description: description || null,
-            demandeurId: req.admin.id, demandeurEmail: req.admin.email
-        });
-        await logAction(req, 'PENDING_CREATE', `PendingAction#${action.id}`, { type });
+        const action = await ouvrirDemande(req, type, payload, description);
         return res.status(201).json({ success: true, message: 'Demande créée, en attente de validation', data: action });
     } catch (error) {
         console.error('creerDemande:', error);
@@ -167,4 +218,4 @@ const rejeter = async (req, res) => {
     }
 };
 
-module.exports = { creerDemande, listePending, approuver, rejeter };
+module.exports = { creerDemande, listePending, approuver, rejeter, ouvrirDemande };

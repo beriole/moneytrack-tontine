@@ -9,7 +9,10 @@ route.get("/benefices",requireRole('ADMIN_FINANCE'),CONTROLLER.benefices);
 route.get("/paiements",CONTROLLER.consulterPaiment);
 route.get("/pret",CONTROLLER.listePrets);
 route.get("/prets/:id",CONTROLLER.detailsPret);
-// Opérations financières sensibles
+// Operations financieres sensibles.
+// Ces routes n'executent plus rien : elles ouvrent une demande (volet
+// "maker"). L'execution reclame l'approbation d'un SECOND administrateur,
+// via POST /api/admin/validation/:id/approuver. Reponse : 202.
 route.post("/:id/rembourser",requireRole('ADMIN_FINANCE'),CONTROLLER.rembourser);
 route.post("/wallet/ajuster",requireRole('ADMIN_FINANCE'),CONTROLLER.ajusterWallet);
 

@@ -46,7 +46,9 @@ const ajouterTransaction = async (req, res) => {
     const { epargneId } = req.params;
     const { montant, description } = req.body;
 
-    const epargne = await Epargne.findByPk(epargneId);
+    // L'epargne visee doit etre celle du porteur du jeton : sans ce filtre,
+    // n'importe qui gonflait le cumul de l'epargne d'un autre client.
+    const epargne = await Epargne.findOne({ where: { id: epargneId, user_id: req.user.id } });
     if (!epargne) return res.status(404).json({ echec: "Épargne introuvable" });
 
     const transaction = await TransactionEpargne.create({
@@ -76,8 +78,13 @@ const supprimerEpargne = async (req, res) => {
   try {
     const { epargneId } = req.params;
 
-    await TransactionEpargne.destroy({ where: { Epargne_id: epargneId } });
-    await Epargne.destroy({ where: { id: epargneId } });
+    // La suppression portait sur l'identifiant seul : tout utilisateur
+    // connecte pouvait effacer l'epargne d'un autre.
+    const epargne = await Epargne.findOne({ where: { id: epargneId, user_id: req.user.id } });
+    if (!epargne) return res.status(404).json({ echec: "Épargne introuvable" });
+
+    await TransactionEpargne.destroy({ where: { Epargne_id: epargne.id } });
+    await Epargne.destroy({ where: { id: epargne.id } });
 
     return res.status(200).json({ succes: "Épargne supprimée avec succès" });
   } catch (error) {
@@ -91,7 +98,8 @@ const getStatistiquesEpargne = async (req, res) => {
   try {
     const { epargneId } = req.params;
 
-    const epargne = await Epargne.findByPk(epargneId, {
+    const epargne = await Epargne.findOne({
+      where: { id: epargneId, user_id: req.user.id },
       include: [TransactionEpargne]
     });
 

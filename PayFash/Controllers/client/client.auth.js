@@ -6,6 +6,7 @@ const {Client,Otp} =require('../../models/index');
 const { Where } = require('sequelize/lib/utils');
 const fs=require('fs');
 const Notification=require('../../models/model.notification')
+const NotificationEnvoyer=require('../../models/model.NotificationEnvoyer')
 const nodemailler=require('nodemailer');
 const ENV=require('../../config/index');
 
@@ -207,11 +208,15 @@ const verifyOtp= async (req,res)=>{
 }
 const litige= async (req,res)=>{
     try {
-        const { utilisateurId, description } = req.body;
+        const { description } = req.body;
 
-        const user = await Utilisateur.findByPk(utilisateurId);
-        if (!user) {
-            return res.status(404).json({ erreur: "Utilisateur introuvable" });
+        // Le litige appartient au porteur du jeton. Il lisait auparavant
+        // `utilisateurId` dans le corps de la requete — donc ouvrable au nom
+        // de n'importe qui — et interrogeait `Utilisateur`, un modele qui
+        // n'existe pas : la route echouait de toute facon systematiquement.
+        const utilisateurId = req.user.id;
+        if (!description || !String(description).trim()) {
+            return res.status(400).json({ erreur: "La description du litige est obligatoire" });
         }
 
         const litige = await Litige.create({
@@ -257,9 +262,21 @@ const sendNotif= async (req, res) => {
 };
 
 
+// Un identifiant dans l'URL n'autorise rien par lui-meme : il doit designer
+// le porteur du jeton. Sans ce controle, /auth/notification/42 rendait la
+// boite de reception du client 42 a n'importe quel utilisateur connecte.
+const memeClient = (req, res, valeur) => {
+  if (parseInt(valeur, 10) !== req.user.id) {
+    res.status(403).json({ error: "Ces donnees ne sont pas les votres" });
+    return false;
+  }
+  return true;
+};
+
 const clientNotif= async (req, res) => {
   try {
     const clientId = req.params.clientId;
+    if (!memeClient(req, res, clientId)) return;
 
     const client = await Client.findByPk(clientId, {
       include: {
@@ -283,10 +300,14 @@ const clientNotif= async (req, res) => {
 const notifLu= async (req, res) => {
   try {
     const { clientId, notificationId } = req.params;
+    if (!memeClient(req, res, clientId)) return;
 
+    // Les cles etrangeres de la table pivot sont ClientId / NotificationId
+    // (majuscules, posees par le belongsToMany de models/index.js). Avec les
+    // noms en minuscules, la clause ne correspondait a rien.
     const updated = await NotificationEnvoyer.update(
       { lu: true },
-      { where: { clientId, notificationId } }
+      { where: { ClientId: clientId, NotificationId: notificationId } }
     );
 
     if (updated[0] === 0) {
@@ -304,6 +325,7 @@ const notifLu= async (req, res) => {
 const notifNonLu= async (req, res) => {
   try {
     const { clientId } = req.params;
+    if (!memeClient(req, res, clientId)) return;
 
     const notifs = await Notification.findAll({
       include: [
@@ -322,23 +344,46 @@ const notifNonLu= async (req, res) => {
   }
 };
 
+// POST /auth/reset  body: { email, OtpCode, nouveauMotDePasse }
+//
+// La route prenait auparavant { email, nouveauMotDePasse } et changeait le
+// mot de passe sur la seule foi de l'email : n'importe qui pouvait prendre
+// n'importe quel compte. Elle exige desormais un code OTP valide, non expire,
+// consomme au passage — le meme mecanisme que /auth/sendOtp.
 const resetPassword = async (req, res) => {
-  console.log(req.body);
-  const { email, nouveauMotDePasse } = req.body;
+  const { email, OtpCode, nouveauMotDePasse } = req.body;
+
+  if (!email || !OtpCode || !nouveauMotDePasse) {
+    return res.status(400).json({
+      message: "email, OtpCode et nouveauMotDePasse sont requis. Demandez d'abord un code via /auth/sendOtp."
+    });
+  }
+  if (String(nouveauMotDePasse).length < 8) {
+    return res.status(400).json({ message: "Le mot de passe doit faire au moins 8 caracteres" });
+  }
 
   try {
+    const code = await Otp.findOne({ where: { email, OtpCode } });
+    if (!code) {
+      return res.status(400).json({ message: "Code de verification invalide" });
+    }
+    if (new Date(code.dateExpiration) < new Date()) {
+      await code.destroy();
+      return res.status(400).json({ message: "Code expire, demandez-en un nouveau" });
+    }
+
     const user = await Client.findOne({ where: { email } });
     if (!user) {
+      await code.destroy();
       return res.status(404).json({ message: "Utilisateur introuvable" });
     }
 
     const sel = await bcrypt.genSalt(10);
     const hache = await bcrypt.hash(nouveauMotDePasse, sel);
+    await Client.update({ motDePasse: hache }, { where: { email } });
 
-    await Client.update(
-      { motDePasse: hache },
-      { where: { email } }
-    );
+    // Un code ne sert qu'une fois.
+    await code.destroy();
 
     res.status(200).json({ message: "Mot de passe réinitialisé avec succès " });
   } catch (error) {
