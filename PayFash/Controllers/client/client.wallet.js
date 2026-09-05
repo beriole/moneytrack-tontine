@@ -70,45 +70,53 @@ const transfer = async (req, res) => {
   const { fromType, toType, montant, fromWalletId, toWalletId } = req.body;
   const clientId = req.user.id;
 
-  if (!montant || montant <= 0) 
+  if (!montant || montant <= 0)
     return res.status(400).json({ error: "Montant invalide" });
 
+  // Sans identifiant ni type, la clause WHERE partait avec une valeur
+  // undefined et Sequelize levait une erreur opaque en 500.
+  if ((!fromWalletId && !fromType) || (!toWalletId && !toType)) {
+    return res.status(400).json({
+      error: "Precisez la source et la destination (fromWalletId/toWalletId, ou fromType/toType)"
+    });
+  }
+
   try {
-    let fromPortefeuille, toPortefeuille;
-    
-    // Récupérer le portefeuille source
-    if (fromWalletId) {
-        fromPortefeuille = await Portefeuille.findOne({ 
-            where: { id: fromWalletId, ClientPortefeuilleId: clientId, estActif: true } 
-        });
-    } else {
-        fromPortefeuille = await Portefeuille.findOne({ 
-            where: { ClientPortefeuilleId: clientId, typePortefeuille: fromType, estActif: true } 
-        });
-    }
-    
-    // Récupérer le portefeuille destination
-    if (toWalletId) {
-        toPortefeuille = await Portefeuille.findOne({ 
-            where: { id: toWalletId, ClientPortefeuilleId: clientId, estActif: true } 
-        });
-    } else {
-        toPortefeuille = await Portefeuille.findOne({ 
-            where: { ClientPortefeuilleId: clientId, typePortefeuille: toType, estActif: true } 
-        });
-    }
+    // Chargement, controle du solde et ecritures dans UNE SEULE transaction,
+    // sur des lignes verrouillees. Auparavant le solde etait lu hors
+    // transaction et sauve dedans sans verrou : deux transferts simultanes
+    // passaient tous les deux le controle et pouvaient vider le portefeuille
+    // au-dela de son solde.
+    const { fromPortefeuille, toPortefeuille } = await Portefeuille.sequelize.transaction(async (t) => {
+      const verrou = { transaction: t, lock: t.LOCK.UPDATE };
+      const base = { ClientPortefeuilleId: clientId, estActif: true };
 
-    if (!fromPortefeuille || !toPortefeuille) 
-      return res.status(404).json({ error: "Portefeuille introuvable" });
+      const fromPortefeuille = await Portefeuille.findOne({
+        where: fromWalletId
+          ? { ...base, id: fromWalletId }
+          : { ...base, typePortefeuille: fromType },
+        ...verrou
+      });
 
-    if (fromPortefeuille.id === toPortefeuille.id)
-        return res.status(400).json({ error: "Impossible de transférer vers le même portefeuille" });
+      const toPortefeuille = await Portefeuille.findOne({
+        where: toWalletId
+          ? { ...base, id: toWalletId }
+          : { ...base, typePortefeuille: toType },
+        ...verrou
+      });
 
-    if (fromPortefeuille.solde < montant) 
-      return res.status(400).json({ error: "Solde insuffisant", disponible: fromPortefeuille.solde });
+      if (!fromPortefeuille || !toPortefeuille) {
+        throw Object.assign(new Error("Portefeuille introuvable"), { statut: 404 });
+      }
+      if (fromPortefeuille.id === toPortefeuille.id) {
+        throw Object.assign(new Error("Impossible de transférer vers le même portefeuille"), { statut: 400 });
+      }
+      if (fromPortefeuille.solde < montant) {
+        throw Object.assign(new Error("Solde insuffisant"), {
+          statut: 400, disponible: fromPortefeuille.solde
+        });
+      }
 
-    // Transaction
-    await Portefeuille.sequelize.transaction(async (t) => {
       fromPortefeuille.solde -= parseFloat(montant);
       toPortefeuille.solde += parseFloat(montant);
 
@@ -133,6 +141,8 @@ const transfer = async (req, res) => {
             ClientTransactionId: clientId 
         }
       ], { transaction: t });
+
+      return { fromPortefeuille, toPortefeuille };
     });
 
     return res.status(201).json({
@@ -141,6 +151,13 @@ const transfer = async (req, res) => {
       toPortefeuille
     });
   } catch (error) {
+    // Les refus metier remontent avec leur code : un solde insuffisant n'est
+    // pas une erreur serveur.
+    if (error.statut) {
+      const corps = { error: error.message };
+      if (error.disponible !== undefined) corps.disponible = error.disponible;
+      return res.status(error.statut).json(corps);
+    }
     return res.status(500).json({ error: error.message });
   }
 };
@@ -152,12 +169,17 @@ const transaction = async (req, res) => {
 
     try {
         const whereClause = { ClientTransactionId: clientId };
-        
-        // Filtrer par portefeuille si spécifié
+
+        // Le grand livre n'a pas de dimension "portefeuille" : une ecriture
+        // est rattachee au client, pas au sous-compte. Filtrer dessus
+        // produisait une erreur SQL sur une colonne inexistante. On le dit
+        // plutot que d'ignorer silencieusement le filtre demande.
         if (portefeuilleId) {
-            whereClause.PortefeuilleId = portefeuilleId;
+            return res.status(400).json({
+                error: "Le filtre par portefeuille n'est pas disponible : les transactions sont rattachees au client, pas a un sous-compte."
+            });
         }
-        
+
         // Filtrer par type de transaction
         if (type) {
             whereClause.type = type;
@@ -220,6 +242,16 @@ const creerPortefeuille = async (req, res) => {
     } = req.body;
 
     try {
+        // Une caisse de tontine n'appartient a aucun client : elle est creee
+        // par le module tontine, sans proprietaire. Laisser un client s'en
+        // fabriquer une polluait l'encours des caisses du back-office et
+        // brouillait les regles qui refusent d'operer sur ce type.
+        if (typePortefeuille === 'tontine') {
+            return res.status(400).json({
+                error: "Le type « tontine » est reserve aux caisses de groupe, creees par le module tontine."
+            });
+        }
+
         // Vérifier le nombre de portefeuilles
         const countPortefeuilles = await Portefeuille.count({
             where: { ClientPortefeuilleId: clientId, estActif: true }
@@ -330,7 +362,14 @@ const modifierPortefeuille = async (req, res) => {
         // Mettre à jour les champs fournis
         if (nom !== undefined) portefeuille.nom = nom;
         if (devise !== undefined) portefeuille.devise = devise;
-        if (typePortefeuille !== undefined) portefeuille.typePortefeuille = typePortefeuille;
+        if (typePortefeuille !== undefined) {
+            if (typePortefeuille === 'tontine') {
+                return res.status(400).json({
+                    error: "Le type « tontine » est reserve aux caisses de groupe."
+                });
+            }
+            portefeuille.typePortefeuille = typePortefeuille;
+        }
         if (estPrincipal !== undefined) portefeuille.estPrincipal = estPrincipal;
         if (objectifMontant !== undefined) portefeuille.objectifMontant = objectifMontant;
         if (objectifDate !== undefined) portefeuille.objectifDate = objectifDate ? new Date(objectifDate) : null;
@@ -354,7 +393,10 @@ const modifierPortefeuille = async (req, res) => {
 const supprimerPortefeuille = async (req, res) => {
     const clientId = req.user.id;
     const { walletId } = req.params;
-    const { hardDelete = false } = req.query;
+    // req.query ne contient que des chaines : "false" est truthy. Sans cette
+    // conversion, ?hardDelete=false sautait le garde-fou "le portefeuille
+    // contient encore des fonds" ET declenchait la suppression definitive.
+    const hardDelete = ['1', 'true', 'oui'].includes(String(req.query.hardDelete || '').toLowerCase());
 
     try {
         const portefeuille = await Portefeuille.findOne({
@@ -500,7 +542,7 @@ const checkObjectifsAtteints = async (req, res) => {
             }
         });
 
-        const objectifs = portfefeuilles.map(p => ({
+        const objectifs = portefeuille.map(p => ({
             id: p.id,
             nom: p.nom || p.typePortefeuille,
             actuel: p.solde,
