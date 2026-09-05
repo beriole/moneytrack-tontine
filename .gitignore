@@ -1,0 +1,72 @@
+# ===== Dépendances =====
+node_modules/
+**/node_modules/
+
+# ===== Secrets / environnement =====
+.env
+**/.env
+.env.local
+**/.env.local
+# Toute variante de .env (sauvegardes, .env.production, .env.bak...) :
+# un seul fichier oublie suffit a publier les cles Fapshi.
+.env.*
+**/.env.*
+# Sauf le gabarit, qui ne contient aucune valeur.
+!.env.example
+!**/.env.example
+# Clés de signature JWT (NE JAMAIS committer)
+.private/
+**/.private/
+*.pem
+
+# ===== Caches d'outils =====
+# stage1/.jest : cache haste-map de Jest, 47 Mo d'artefacts regeneres a chaque run.
+.jest/
+**/.jest/
+.cache/
+**/.cache/
+coverage/
+**/coverage/
+
+# ===== Expo / React Native =====
+.expo/
+**/.expo/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.keystore
+*.mobileprovision
+*.orig.*
+
+# ===== Build / natif =====
+android/
+ios/
+build/
+**/build/
+
+# ===== Logs =====
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+logs/
+
+# ===== OS / éditeur =====
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# ===== Divers backend =====
+*.sqlite
+*.sqlite3
+uploads/
+temp/
+tmp/
+
+# Dumps de base de donnees (jamais versionnes)
+backups/
+*.sql

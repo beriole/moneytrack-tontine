@@ -1,0 +1,366 @@
+{
+  "intents": [
+    {
+      "tag": "greeting",
+      "patterns": [
+        "bonjour", "salut", "coucou", "hey", "bonsoir", "hello", "yo", 
+        "salut l'assistant", "bonjour le bot", "cc", "slt", "hey bot",
+        "bonjour assistant financier", "salut gestionnaire budget",
+        "hello l'application", "bonjour c'est moi", "salut c'est partit",
+        "bonjour je suis là", "salut comment ça marche", "hey l'application",
+        "bonjour besoin d'aide", "salut démarrage", "hello assistance"
+      ],
+      "responses": [
+        "Bonjour 👋 ! Je suis votre assistant financier intelligent. Je peux vous aider avec la gestion de vos budgets, l'analyse de vos dépenses, la planification de projets et bien plus !",
+        "Salut ! 🤗 Votre assistant de gestion budgétaire est en ligne. Souhaitez-vous consulter vos budgets, analyser vos finances ou planifier un nouveau projet ?",
+        "Hello ! 💼 Assistant financier connecté. Prêt à optimiser votre gestion d'argent. Par où commençons-nous aujourd'hui ?",
+        "Bonjour ! 📊 Expert budget à votre service. Je peux vous accompagner dans toutes vos décisions financières.",
+        "Salutations ! 🎯 Votre conseiller financier personnel est disponible. Comment puis-je vous aider ?"
+      ],
+      "context": "welcome",
+      "priority": 1
+    },
+    {
+      "tag": "portfolio_balance",
+      "patterns": [
+        "quel est mon solde", "solde actuel", "montant disponible", "combien ai-je sur mon compte",
+        "état de mon portefeuille", "solde en temps réel", "fonds disponibles", "argent restant",
+        "capital disponible", "liquidités", "montant total", "balance financière",
+        "combien me reste-t-il", "état des fonds", "position financière", "trésorerie",
+        "voir mon solde", "consulter mon portefeuille", "montant du compte",
+        "disponibilités financières", "avoir financier", "solde global"
+      ],
+      "responses": [
+        "💰 **SOLDE DU PORTEFEUILLE**\n\nVotre solde actuel s'élève à **{solde} FCFA**\n• Dernière mise à jour : {date}\n• Évolution sur 30 jours : {evolution}\n\nSouhaitez-vous un détail par catégorie ?",
+        "📊 **SITUATION FINANCIÈRE**\n\n**Solde disponible :** {solde} FCFA\n**Dernier refresh :** {date}\n**Tendance :** {evolution} vs mois dernier\n\nOptions : détail des comptes ou historique complet ?"
+      ],
+      "context": "portfolio",
+      "priority": 2
+    },
+    {
+      "tag": "recharge_account",
+      "patterns": [
+        "recharger mon compte", "ajouter des fonds", "approvisionner", "alimenter mon portefeuille",
+        "faire un dépôt", "ajouter de l'argent", "recharge par carte", "virement vers compte",
+        "alimenter le solde", "déposer des fonds", "créditer mon compte", "approvisionnement",
+        "transfert d'argent", "alimentation compte", "dépôt bancaire", "compléter mon solde",
+        "augmenter mon portefeuille", "mettre de l'argent", "funding du compte"
+      ],
+      "responses": [
+        "💳 **RECHARGE DE COMPTE**\n\nMéthodes disponibles :\n• 💳 Carte bancaire (instantané)\n• 🏦 Virement bancaire (24-48h)\n• 📱 Mobile Money\n• 🔗 Liens de paiement sécurisés\n\nQuel montant souhaitez-vous ajouter ?",
+        "💰 **ALIMENTATION DE PORTEFEUILLE**\n\n**Options de recharge :**\n🔸 Carte : traitement immédiat\n🔸 Virement : sous 48h\n🔸 Mobile Money : instantané\n\nVeuillez préciser le montant :"
+      ],
+      "context": "transaction",
+      "priority": 2
+    },
+    {
+      "tag": "expense_categorization",
+      "patterns": [
+        "catégoriser mes dépenses", "classer transactions", "analyse par catégorie", 
+        "dépenses nourriture transport", "où va mon argent", "répartition des dépenses",
+        "analyse catégorielle", "classification dépenses", "catégories de consommation",
+        "répartition budgétaire", "analyse des postes", "ventilation dépenses",
+        "où part mon argent", "analyse par poste", "catégorisation automatique",
+        "voir mes catégories", "analyse dépenses par type", "classification automatique",
+        "répartition des coûts", "analyse poste budgétaire"
+      ],
+      "responses": [
+        "📊 **ANALYSE PAR CATÉGORIES**\n\n{analysis}\n\n📈 **Recommandations :**\n{recommendations}",
+        "🎯 **VENTILATION DES DÉPENSES**\n\n{analysis}\n\n💡 **Points d'amélioration identifiés :**\n{recommendations}"
+      ],
+      "context": "analytics",
+      "priority": 2
+    },
+    {
+      "tag": "financial_stats",
+      "patterns": [
+        "statistiques financières", "rapport détaillé", "analyse revenues dépenses", 
+        "visualisation graphique", "évolution mensuelle", "tendances financières",
+        "rapport financier", "tableau de bord", "indicateurs financiers",
+        "performance financière", "analyse complète", "statistiques globales",
+        "rapport mensuel", "analyse périodique", "métriques financières",
+        "dashboard financier", "chiffres clés", "performance économique",
+        "analyse chiffrée", "statistiques détaillées"
+      ],
+      "responses": [
+        "📈 **RAPPORT FINANCIER COMPLET**\n\n{stats}\n\n{charts}\n\n💡 **Insights détectés :**\n{insights}",
+        "📊 **TABLEAU DE BORD FINANCIER**\n\n{stats}\n\n📋 **Synthèse :**\n{charts}\n\n🎯 **Recommandations stratégiques :**\n{insights}"
+      ],
+      "context": "analytics",
+      "priority": 2
+    },
+    {
+      "tag": "budget_recommendations",
+      "patterns": [
+        "recommandations budget", "conseils économies", "optimiser mes finances", 
+        "comment mieux épargner", "suggestions budgétaires", "améliorer gestion",
+        "conseils financiers", "optimisation budget", "recommandations personnalisées",
+        "astuces économies", "meilleure gestion", "conseils épargne",
+        "optimisation dépenses", "stratégie financière", "plan optimisation",
+        "conseil gestion", "tips budgétaires", "amélioration financière",
+        "suggestions optimisation", "recommandations intelligentes"
+      ],
+      "responses": [
+        "💡 **RECOMMANDATIONS INTELLIGENTES**\n\nBasé sur votre historique, voici mes suggestions :\n\n{recommendations}\n\n🎯 **Impact estimé :** {impact}",
+        "🚀 **STRATÉGIE D'OPTIMISATION**\n\n{recommendations}\n\n💰 **Gain potentiel :** {impact}\n\n📅 **Plan d'action :** {action_plan}"
+      ],
+      "context": "advice",
+      "priority": 2
+    },
+    {
+      "tag": "savings_goals",
+      "patterns": [
+        "créer objectif épargne", "nouveau but financier", "planifier épargne", 
+        "objectif montant échéance", "suivre mon épargne", "progression objectif",
+        "définir objectif", "but épargne", "plan épargne", "cible financière",
+        "épargne projet", "objectif financier", "programme épargne",
+        "épargne automatique", "goal épargne", "target financière",
+        "nouvel objectif", "plan épargne", "cible épargne", "but d'économie"
+      ],
+      "responses": [
+        "🎯 **GESTION DES OBJECTIFS D'ÉPARGNE**\n\n{goals_status}\n\nNouvel objectif ? Merci de préciser :\n• Montant visé\n• Échéance souhaitée\n• Fréquence d'épargne",
+        "💰 **PLANIFICATION D'ÉPARGNE**\n\n{goals_status}\n\nPour créer un objectif :\n1. 📌 Montant cible\n2. 📅 Date butoir\n3. 🔄 Rythme d'épargne\n\nQuel est votre objectif ?"
+      ],
+      "context": "savings",
+      "priority": 2
+    },
+    {
+      "tag": "project_planning",
+      "patterns": [
+        "créer projet budget", "planifier achat important", "budget vacances mariage", 
+        "projet immobilier", "allocation budget projet", "suivi projet financier",
+        "nouveau projet", "planification projet", "budget projet", "projet personnel",
+        "gestion projet", "financement projet", "projet spécifique",
+        "plan projet", "budget événement", "projet futur",
+        "lancement projet", "initier projet", "démarrer projet"
+      ],
+      "responses": [
+        "🏗️ **PLANIFICATION DE PROJET**\n\n{existing_projects}\n\nPour créer un nouveau projet :\n• Nom du projet\n• Budget total estimé\n• Date de réalisation\n• Catégories de dépenses",
+        "📋 **GESTIONNAIRE DE PROJETS**\n\n{existing_projects}\n\n🔧 **Création nouveau projet :**\n📝 Nom | 💰 Budget | 📅 Échéance | 🎯 Catégories\n\nPar où commençons-nous ?"
+      ],
+      "context": "projects",
+      "priority": 2
+    },
+    {
+      "tag": "notifications_alerts",
+      "patterns": [
+        "configurer alertes", "rappels budget", "alertes dépassement", 
+        "notifications épargne", "gérer mes alertes", "suivi proactif",
+        "paramètres notifications", "alertes financières", "rappel dépenses",
+        "notifications budget", "alertes personnalisées", "configurer rappels",
+        "gestion alertes", "alertes temps réel", "notifications importantes",
+        "systeme d'alertes", "alertes personnalisées", "gestion notifications"
+      ],
+      "responses": [
+        "🔔 **GESTION DES ALERTES**\n\n{alerts_status}\n\nTypes d'alertes disponibles :\n• Dépassement de budget\n• Rappel d'épargne\n• Alertes de sécurité\n• Notifications de projet",
+        "📢 **SYSTÈME DE NOTIFICATIONS**\n\n{alerts_status}\n\n🔸 Budgets | 🔸 Épargne | 🔸 Sécurité | 🔸 Projets\n\nQuel type d'alerte souhaitez-vous configurer ?"
+      ],
+      "context": "alerts",
+      "priority": 2
+    },
+    {
+      "tag": "transaction_history",
+      "patterns": [
+        "historique transactions", "suivi toutes opérations", "liste transactions récentes", 
+        "relevé détaillé", "traçabilité opérations", "historique complet",
+        "journal transactions", "historique opérations", "liste mouvements",
+        "relevé transactions", "historique paiements", "archives transactions",
+        "suivi opérations", "historique financier", "registre transactions",
+        "historique complet", "liste des opérations", "journal financier"
+      ],
+      "responses": [
+        "📋 **HISTORIQUE DES TRANSACTIONS**\n\n{transactions}\n\nFiltres disponibles :\n• Par période\n• Par catégorie\n• Par montant\n• Par statut",
+        "📊 **RELEVÉ D'OPÉRATIONS**\n\n{transactions}\n\n🎛️ **Options de filtrage :**\n📅 Période | 🏷️ Catégorie | 💰 Montant | 📊 Type\n\nQuel filtre appliquer ?"
+      ],
+      "context": "portfolio",
+      "priority": 2
+    },
+    {
+      "tag": "list_budgets",
+      "patterns": [
+        "montre moi mes budgets", "quels sont mes budgets", "liste de mes budgets", 
+        "donne moi tous mes budgets", "mes budgets", "affiche mes budgets",
+        "budgets existants", "liste budgets", "voir mes budgets",
+        "consulter budgets", "budgets en cours", "état des budgets",
+        "résumé budgets", "synthèse budgets", "overview budgets",
+        "catalogue budgets", "inventaire budgets", "répertoire budgets"
+      ],
+      "responses": [
+        "📂 **VOS BUDGETS ACTIFS**\n\n{budgets_list}\n\n📊 **Synthèse :**\n{summary}",
+        "🗂️ **PORTEFEUILLE BUDGÉTAIRE**\n\n{budgets_list}\n\n📈 **Métriques globales :**\n{summary}"
+      ],
+      "context": "budgets",
+      "priority": 2
+    },
+    {
+      "tag": "create_budget",
+      "patterns": [
+        "créer nouveau budget", "nouveau budget", "ajouter budget", 
+        "définir budget", "établir budget", "configurer budget",
+        "création budget", "initier budget", "lancer budget",
+        "démarrer budget", "nouvelle planification", "budget mensuel",
+        "élaborer budget", "constituer budget", "formaliser budget"
+      ],
+      "responses": [
+        "🆕 **CRÉATION DE BUDGET**\n\nAssistant de création activé !\n\nMerci de fournir :\n• Nom du budget\n• Montant total\n• Période (début/fin)\n• Catégories de dépenses",
+        "🎯 **NOUVEAU BUDGET**\n\n📝 **Informations requises :**\n🔸 Nom significatif\n🔸 Enveloppe totale\n🔸 Période de validité\n🔸 Postes de dépenses\n\nCommençons par le nom :"
+      ],
+      "context": "budget_creation",
+      "priority": 2
+    },
+    {
+      "tag": "budget_details",
+      "patterns": [
+        "détails budget", "voir budget spécifique", "consulter budget", 
+        "analyse budget", "détail budget", "fiche budget",
+        "budget particulier", "examiner budget", "explorer budget",
+        "zoom budget", "focus budget", "détails spécifiques",
+        "fiche détaillée budget", "analyse approfondie"
+      ],
+      "responses": [
+        "🔍 **DÉTAILS DU BUDGET**\n\n{budget_details}\n\n📈 **Performance :**\n{performance}",
+        "📋 **FICHE BUDGÉTAIRE DÉTAILLÉE**\n\n{budget_details}\n\n🎯 **Indicateurs clés :**\n{performance}"
+      ],
+      "context": "budgets",
+      "priority": 2
+    },
+    {
+      "tag": "projet_status",
+      "patterns": [
+        "état projet", "avancement projet", "progression projet", 
+        "suivi projet", "statut projet", "évolution projet",
+        "avancement travaux", "projet en cours", "état d'avancement",
+        "suivi avancement", "progression travaux", "statut avancement",
+        "point projet", "situation projet", "avancement global"
+      ],
+      "responses": [
+        "🚀 **SUIVI DE PROJET**\n\n{project_status}\n\n📊 **Metrics :**\n{metrics}",
+        "📈 **TABLEAU DE BORD PROJET**\n\n{project_status}\n\n🎯 **Indicateurs de performance :**\n{metrics}"
+      ],
+      "context": "projects",
+      "priority": 2
+    },
+    {
+      "tag": "expense_tracking",
+      "patterns": [
+        "suivi dépenses", "tracker mes dépenses", "enregistrer une dépense", 
+        "ajouter dépense", "saisir dépense", "enregistrement dépense",
+        "loguer dépense", "noter dépense", "consigner dépense",
+        "enregistrer frais", "saisir achat", "tracker achat"
+      ],
+      "responses": [
+        "💰 **ENREGISTREMENT DE DÉPENSE**\n\nPour tracker votre dépense :\n• Montant\n• Catégorie\n• Date\n• Description (optionnel)\n\nQuel est le montant ?",
+        "📝 **SAISIE DE DÉPENSE**\n\n🔧 **Informations nécessaires :**\n💶 Montant | 🏷️ Catégorie | 📅 Date | 📋 Description\n\nCommençons par le montant :"
+      ],
+      "context": "expense_tracking",
+      "priority": 2
+    },
+    {
+      "tag": "budget_analysis",
+      "patterns": [
+        "analyser budget", "performance budget", "évaluer budget", 
+        "review budget", "audit budget", "diagnostic budget",
+        "contrôle budget", "vérification budget", "inspection budget",
+        "examen budget", "évaluation performance", "analyse performance"
+      ],
+      "responses": [
+        "🔬 **ANALYSE BUDGÉTAIRE**\n\n{analysis_results}\n\n💡 **Points d'attention :**\n{key_insights}",
+        "📊 **AUDIT BUDGÉTAIRE**\n\n{analysis_results}\n\n🎯 **Recommandations :**\n{key_insights}"
+      ],
+      "context": "analytics",
+      "priority": 2
+    },
+    {
+      "tag": "financial_goals",
+      "patterns": [
+        "objectifs financiers", "buts économiques", "cibles financières", 
+        "ambitions financières", "plans financiers", "stratégie économique",
+        "objectifs économiques", "cibles budgétaires", "buts pécuniaires"
+      ],
+      "responses": [
+        "🎯 **OBJECTIFS FINANCIERS**\n\n{goals_overview}\n\n🚀 **Prochaines étapes :**\n{next_steps}",
+        "🌈 **PLANIFICATION FINANCIÈRE**\n\n{goals_overview}\n\n📅 **Feuille de route :**\n{next_steps}"
+      ],
+      "context": "planning",
+      "priority": 2
+    },
+    {
+      "tag": "help",
+      "patterns": [
+        "aide", "comment ça marche", "fonctionnalités", "que peux-tu faire",
+        "aide-moi", "assistance", "support", "guide utilisation",
+        "mode d'emploi", "tutoriel", "fonctionnement", "capabilities",
+        "comment utiliser", "guide débutant", "aide assistance"
+      ],
+      "responses": [
+        "ℹ️ **AIDE & FONCTIONNALITÉS**\n\nJe peux vous aider avec :\n\n💰 **Gestion de portefeuille**\n• Consultation solde\n• Recharge de compte\n• Historique transactions\n\n📊 **Analyse budgétaire**\n• Statistiques détaillées\n• Catégorisation automatique\n• Recommandations intelligentes\n\n🎯 **Planification**\n• Objectifs d'épargne\n• Projets personnels\n• Alertes personnalisées\n\n💡 **Conseils**\n• Optimisation budget\n• Stratégies économies\n• Analyses prédictives",
+        "🔍 **GUIDE D'UTILISATION**\n\n**Fonctionnalités principales :**\n\n📱 **Portefeuille :** Solde, recharge, historique\n📈 **Analytics :** Stats, catégories, tendances\n🎯 **Planning :** Épargne, projets, objectifs\n🔔 **Alertes :** Notifications, rappels, sécurité\n\nQuel module vous intéresse ?"
+      ],
+      "context": "help",
+      "priority": 1
+    },
+    {
+      "tag": "thanks",
+      "patterns": [
+        "merci", "merci beaucoup", "c'est gentil", "top merci", 
+        "parfait merci", "merci bien", "thanks", "thank you",
+        "je te remercie", "gratitude", "appréciation", "reconnaissance",
+        "merci infiniment", "grand merci", "thanks beaucoup"
+      ],
+      "responses": [
+        "Avec plaisir 🙏 ! Continuez à maîtriser vos finances comme un pro !",
+        "Je suis là pour vous aider à optimiser votre budget 😊. N'hésitez pas pour d'autres analyses !",
+        "Merci à vous ! 💫 Votre réussite financière est ma priorité.",
+        "Ravi d'avoir pu vous aider ! 🚀 Ensemble, optimisons votre gestion financière.",
+        "C'est un plaisir ! 💪 Votre progression financière me motive au quotidien."
+      ],
+      "context": "general",
+      "priority": 1
+    },
+    {
+      "tag": "goodbye",
+      "patterns": [
+        "au revoir", "bye", "à bientôt", "bonne journée", 
+        "ciao", "tchao", "je reviendrai", "à plus tard",
+        "bonsoir", "goodbye", "see you", "à demain",
+        "bonne fin de journée", "à la prochaine", "salut à plus"
+      ],
+      "responses": [
+        "Au revoir 👋 ! Excellente continuation avec votre gestion budgétaire 📊.",
+        "À bientôt ! 💡 Vos finances sont entre de bonnes mains.",
+        "Bye 👋, restez maître de votre budget et à très vite !",
+        "Bonne journée ! 🌟 Revenez quand vous voulez pour un suivi financier.",
+        "À la prochaine ! 🚀 Continuez votre excellent travail budgétaire."
+      ],
+      "context": "general",
+      "priority": 1
+    },
+    {
+      "tag": "fallback",
+      "patterns": [],
+      "responses": [
+        "🤔 Je n'ai pas saisi votre demande. Je suis spécialisé en gestion financière : budgets, analyses, projets, épargne...",
+        "💡 Pourriez-vous reformuler votre question budgétaire ? Je peux vous aider avec la gestion de portefeuille, l'analyse des dépenses, ou la planification de projets.",
+        "🔍 Je suis un assistant financier. Voici ce que je peux faire : consulter vos budgets, analyser vos dépenses, gérer vos projets, ou vous donner des conseils d'épargne.",
+        "🎯 Spécialiste finances à l'écoute ! Parlez-moi de vos besoins : suivi budget, analyse dépenses, projet épargne...",
+        "💼 Expert comptable IA ! Domaines : gestion budget, optimisation finances, planification projets. Comment vous aider ?"
+      ],
+      "context": "general",
+      "priority": 0
+    }
+  ],
+  "metadata": {
+    "version": "2.0.0",
+    "created": "2024-01-15",
+    "author": "Assistant Budget Pro",
+    "description": "Intents complets pour application de gestion budgétaire avancée",
+    "features_covered": [
+      "Gestion portefeuille numérique",
+      "Budget automatisé",
+      "Épargne planifiée",
+      "Projets personnels",
+      "Notifications intelligentes",
+      "Analytics financiers"
+    ]
+  }
+}

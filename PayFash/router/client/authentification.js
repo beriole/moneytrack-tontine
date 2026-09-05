@@ -1,0 +1,16 @@
+const express= require('express');
+const route= express.Router();
+const CONTROLLER=require('../../Controllers/client/client.auth');
+route.post("/register",CONTROLLER.inscription);
+route.post("/login",CONTROLLER.connexion);
+route.post("/logout",CONTROLLER.deconnexion);
+route.post("/reset",CONTROLLER.resetPassword);
+route.post("/sendOtp",CONTROLLER.sendOtp);
+route.post("/verifyOtp",CONTROLLER.verifyOtp);
+route.post("/litige",CONTROLLER.litige);
+route.get("/notification/:clientId",CONTROLLER.clientNotif);
+route.get("/info/:id",CONTROLLER.profil);
+route.patch("/info/:id",CONTROLLER.modifierprofil);
+route.put("/:notificationId/lire/:clientId",CONTROLLER.notifLu);
+route.get("/client/:clientId/nonlues",CONTROLLER.notifNonLu);
+module.exports=route;

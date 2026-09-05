@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "MoneyTrack",
+    "slug": "payfash-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#161427"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "MoneyTrack utilise votre position pour afficher les agences proches.",
+        "NSPhotoLibraryUsageDescription": "MoneyTrack a besoin d'acceder a vos photos pour la photo de profil.",
+        "NSCameraUsageDescription": "MoneyTrack a besoin de la camera pour la photo de profil."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#161427",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MoneyTrack utilise votre position pour afficher les agences proches."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MoneyTrack a besoin d'acceder a vos photos pour la photo de profil.",
+          "cameraPermission": "MoneyTrack a besoin de la camera pour la photo de profil."
+        }
+      ]
+    ]
+  }
+}
