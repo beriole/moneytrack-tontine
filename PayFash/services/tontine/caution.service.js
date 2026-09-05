@@ -173,8 +173,12 @@ class CautionService {
                 resteAcouvrir: arrondir(nombre(cotisation.montantDu) - paye)
             };
         }).then(async (r) => {
-            const NotificationService = require('./notification.service');
-            await NotificationService.cautionSaisie(r.cotisation.clientId, r.groupeSaisi, r.montantSaisi);
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.cautionSaisie(r.cotisation.clientId, r.groupeSaisi, r.montantSaisi);
+            } catch (e) {
+                console.log('[tontine] notification de saisie non envoyee :', e.message);
+            }
             return r;
         });
     }

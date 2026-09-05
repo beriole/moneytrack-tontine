@@ -35,6 +35,16 @@ class VoteService {
         if (!SUJETS.includes(sujet)) throw new ErreurTontine(400, `Sujet invalide (attendu : ${SUJETS.join(', ')})`);
         if (!MODES.includes(mode)) throw new ErreurTontine(400, `Mode invalide (attendu : ${MODES.join(', ')})`);
 
+        // Le scrutin d'approbation de credit n'est pas ouvert a la main : il
+        // est cree par la demande elle-meme (CreditService.demander), qui seul
+        // sait a quelle demande le rattacher. Ouvert par un membre, cibleId
+        // n'etait controle nulle part et pouvait designer la demande d'un
+        // AUTRE groupe, que ce groupe-ci approuvait alors a sa place.
+        if (sujet === 'approuver_credit') {
+            throw new ErreurTontine(409,
+                "Ce scrutin s'ouvre automatiquement lors d'une demande de credit : il ne se cree pas a la main");
+        }
+
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
@@ -183,9 +193,11 @@ class VoteService {
             let effet;
             if (compte.resultat === 'approuve') {
                 effet = await this._appliquer(vote, t);
-            } else if (vote.sujet === 'approuver_credit') {
+            } else if (vote.sujet === 'approuver_credit'
+                       && await this._demandeDuGroupe(vote.cibleId, vote.groupeId, t)) {
                 // Un credit non approuve doit etre clos, sinon la demande
                 // reste eternellement "en attente" et bloque l'emprunteur.
+                // Un rejet ne porte, lui aussi, que sur une demande du groupe.
                 const CreditService = require('./credit.service');
                 await CreditService.rejeter(vote.cibleId, t);
                 effet = { applique: true, detail: 'Demande de credit rejetee par le groupe' };
@@ -268,6 +280,11 @@ class VoteService {
 
             case 'approuver_credit': {
                 const CreditService = require('./credit.service');
+                // Ceinture et bretelles : la demande doit relever de la caisse
+                // de CE groupe. Un scrutin ne decide que chez lui.
+                if (!(await this._demandeDuGroupe(vote.cibleId, groupe.id, t))) {
+                    return { applique: false, detail: 'Demande de credit etrangere a ce groupe : aucun effet' };
+                }
                 const demande = await CreditService.marquerApprouvee(vote.cibleId, t);
                 if (!demande) return { applique: false, detail: 'Demande de credit introuvable' };
                 return {
@@ -280,6 +297,21 @@ class VoteService {
             default:
                 return { applique: false, detail: 'Sujet sans effet automatique' };
         }
+    }
+
+    /**
+     * La demande de credit visee appartient-elle bien a la caisse de ce
+     * groupe ? `cibleId` porte tantot un clientId, tantot un demandeId selon
+     * le sujet : rien dans le schema ne garantit la coherence, il faut donc
+     * la verifier avant d'agir.
+     */
+    static async _demandeDuGroupe(demandeId, groupeId, t) {
+        const { TontineDemandeCredit, TontinePoolCredit } = require('../../models');
+        if (!demandeId) return false;
+        const demande = await TontineDemandeCredit.findByPk(demandeId, { transaction: t });
+        if (!demande) return false;
+        const pool = await TontinePoolCredit.findByPk(demande.poolId, { transaction: t });
+        return !!pool && pool.groupeId === groupeId;
     }
 
     /**

@@ -90,8 +90,12 @@ class AmendeService {
 
             return { amende, groupe };
         }).then(async ({ amende, groupe }) => {
-            const NotificationService = require('./notification.service');
-            await NotificationService.amendeInfligee(amende, groupe);
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.amendeInfligee(amende, groupe);
+            } catch (e) {
+                console.log("[tontine] notification d'amende non envoyee :", e.message);
+            }
             return amende;
         });
     }

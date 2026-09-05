@@ -1,5 +1,6 @@
 const { PaiementService } = require('../../services/paiement/paiement.service');
 const { FapshiService } = require('../../services/paiement/fapshi.service');
+const ENV = require('../../config/index');
 
 // =====================================================================
 //  Paiements reels via Fapshi.
@@ -49,13 +50,23 @@ const mesPaiements = async (req, res) => {
 };
 
 // GET /paiement/etat
+//
+// Ce que le client a besoin de savoir : est-ce que je peux recharger, oui ou
+// non. La reponse contenait aussi le solde du compte marchand, renvoye tel
+// quel par Fapshi : la tresorerie de la plateforme etait lisible par
+// n'importe quel utilisateur connecte. On appelle toujours /balance — c'est
+// le test de connectivite le plus sur — mais on n'en publie que le verdict.
 const etatService = async (req, res) => {
     try {
         if (!FapshiService.configure()) {
             return res.status(200).json({ disponible: false, motif: 'Fapshi non configure' });
         }
-        const solde = await FapshiService.solde();
-        return res.status(200).json({ disponible: true, mode: FapshiService.mode, service: solde });
+        await FapshiService.solde();
+        return res.status(200).json({
+            disponible: true,
+            mode: FapshiService.mode,
+            montantMinimum: ENV.PAIEMENT_MONTANT_MIN
+        });
     } catch (e) {
         return res.status(200).json({ disponible: false, motif: e.message });
     }

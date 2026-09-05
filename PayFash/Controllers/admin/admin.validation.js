@@ -86,35 +86,24 @@ async function executeAdjust(payload) {
 // remboursement. Deux personnes, et une trace.
 async function executeVersementTontine(payload) {
     const { cycleId, motif } = payload;
-    const { TontineCycle, TontineCotisation } = require('../../models/index');
+    const { TontineCycle } = require('../../models/index');
     const CycleService = require('../../services/tontine/cycle.service');
 
     const cycle = await TontineCycle.findByPk(cycleId);
     if (!cycle) throw new Error('Cycle introuvable');
     if (cycle.statut === 'complete') throw new Error('Ce cycle est deja verse');
 
-    const { Op } = require('sequelize');
-    const manquantes = await TontineCotisation.findAll({
-        where: { cycleId, statut: { [Op.ne]: 'payee' } }
-    });
-
-    // Les cotisations absentes sont constatees IMPAYEES, pas marquees
-    // payees. Les passer en « payee » ferait tomber le controle sans que
-    // l'argent soit la : le grand livre annoncerait un pot complet devant
-    // une caisse a moitie vide. La dette reste donc une dette, recouvrable
-    // ensuite par la caution ou le garant.
-    for (const c of manquantes) {
-        await c.update({ statut: 'impayee' });
-    }
-
-    // Le beneficiaire recoit ce qui a reellement ete collecte.
+    // Le constat des cotisations absentes appartient au versement lui-meme :
+    // il se fait dans SA transaction (cycle.service.js). Le faire ici, avant
+    // l'appel, laissait les cotisations marquees impayees meme quand le
+    // versement echouait ensuite — par exemple sur une caisse vide.
     const r = await CycleService.verser({ systeme: true }, cycleId, { force: true });
     return {
         montantVerse: r.net,
         potTheorique: r.potAttendu,
         manqueConstate: r.manque,
         beneficiaireId: r.beneficiaireId,
-        cotisationsImpayees: manquantes.length,
+        cotisationsImpayees: r.cotisationsImpayees,
         motif: motif || null,
         cycleSuivant: r.cycleSuivant ? r.cycleSuivant.numeroCycle : null
     };

@@ -293,9 +293,14 @@ class GroupeService {
             };
         }).then(async (r) => {
             // Apres le commit seulement : une notification ne doit jamais
-            // faire echouer le demarrage d'une tontine.
-            const NotificationService = require('./notification.service');
-            await NotificationService.cycleDemarre(r.groupe, r.cycle, r.cycle.beneficiaireId);
+            // faire echouer le demarrage d'une tontine. Sans ce try, une
+            // erreur ici remontait quand meme a l'appelant.
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.cycleDemarre(r.groupe, r.cycle, r.cycle.beneficiaireId);
+            } catch (e) {
+                console.log('[tontine] notification de demarrage non envoyee :', e.message);
+            }
             return r;
         });
     }

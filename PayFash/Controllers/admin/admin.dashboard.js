@@ -9,7 +9,7 @@ const stats = async (req, res) => {
         const [
             totalClients, clientsActifs, clientsVerifies, nouveaux30j,
             volumeTransactions, benefices, encoursWallets, nbTransactions,
-            nbPlans, nbEpargnes, nbProjets
+            nbPlans, nbEpargnes, nbProjets, revenuPlateforme
         ] = await Promise.all([
             Client.count(),
             Client.count({ where: { isActive: true } }),
@@ -22,6 +22,7 @@ const stats = async (req, res) => {
             Plan.count(),
             Epargne.count(),
             Projet.count(),
+            Transaction.sum('montant', { where: { type: 'frais_plateforme' } }),
         ]);
 
         return res.json({
@@ -35,7 +36,13 @@ const stats = async (req, res) => {
                 },
                 finances: {
                     volumeTransactions: volumeTransactions || 0,
+                    // Somme de la colonne `frais`. Elle a longtemps porte un
+                    // defaut de 100,3 FCFA que rien ne debitait : sur une base
+                    // ancienne, ce chiffre contient du revenu fantome.
                     benefices: benefices || 0,
+                    // Le revenu reellement encaisse : la commission prelevee
+                    // sur les pots de tontine.
+                    revenuPlateforme: revenuPlateforme || 0,
                     encoursWallets: encoursWallets || 0,
                     nbTransactions
                 },

@@ -511,7 +511,9 @@ const enregistrerDepense = async (req, res) => {
       type: "dépense",
       statut: "Validée",
       description: description || `Paiement par ${numero} - ${destinateur}`,
-      frais: 100.3, // tu peux calculer dynamique si besoin
+      // Aucun frais n'est preleve sur une depense : rien ne debite ce
+      // montant nulle part. L'inscrire gonflait les benefices annonces.
+      frais: 0,
       ClientTransactionId: clientId
     });
 

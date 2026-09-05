@@ -193,15 +193,21 @@ class CycleService {
     static async verser(acteur, cycleId, options = {}) {
         return this._verser(acteur, cycleId, options).then(async (r) => {
             // Apres le commit : le pot est verse, la notification est un
-            // bonus. Si elle echoue, l'argent a quand meme bouge.
-            const NotificationService = require('./notification.service');
-            const groupe = await TontineGroupe.findByPk(r.groupeId);
-            if (groupe) {
-                await NotificationService.potVerse(
-                    groupe, r.cycleVerse, r.beneficiaireId, r.net, r.destination);
-                if (r.cycleSuivant) {
-                    await NotificationService.cycleDemarre(groupe, r.cycleSuivant, r.cycleSuivant.beneficiaireId);
+            // bonus. Si elle echoue, l'argent a quand meme bouge — encore
+            // faut-il que l'erreur ne remonte pas jusqu'a l'appelant, qui
+            // verrait un 500 sur un versement pourtant reussi.
+            try {
+                const NotificationService = require('./notification.service');
+                const groupe = await TontineGroupe.findByPk(r.groupeId);
+                if (groupe) {
+                    await NotificationService.potVerse(
+                        groupe, r.cycleVerse, r.beneficiaireId, r.net, r.destination);
+                    if (r.cycleSuivant) {
+                        await NotificationService.cycleDemarre(groupe, r.cycleSuivant, r.cycleSuivant.beneficiaireId);
+                    }
                 }
+            } catch (e) {
+                console.log('[tontine] notification de versement non envoyee :', e.message);
             }
             return r;
         });
@@ -253,6 +259,21 @@ class CycleService {
             }
             if (force && arrondir(caisse.solde) <= 0) {
                 throw new ErreurTontine(409, "La caisse est vide : il n'y a rien a verser");
+            }
+
+            // Le versement force constate les cotisations absentes comme
+            // IMPAYEES — pas comme payees : les passer en "payee" ferait
+            // tomber le controle sans que l'argent soit la. Ce constat se fait
+            // ICI, dans la transaction du versement, et non chez l'appelant :
+            // le maker-checker le faisait avant l'appel, si bien qu'un
+            // versement refuse (caisse vide) laissait les cotisations
+            // definitivement marquees impayees pour rien.
+            if (force) {
+                for (const c of impayees) {
+                    if (c.statut !== 'impayee') {
+                        await c.update({ statut: 'impayee' }, { transaction: t });
+                    }
+                }
             }
 
             // En versement force, le beneficiaire recoit ce qui a REELLEMENT
@@ -370,6 +391,7 @@ class CycleService {
                 potAttendu: attendu,
                 force,
                 manque,
+                cotisationsImpayees: force ? impayees.length : 0,
                 bonusAmendes,
                 decote,
                 partDecote,

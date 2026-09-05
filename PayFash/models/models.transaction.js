@@ -27,11 +27,15 @@ const transaction=bd.define("transaction",{
     frais:{
         type:DataTypes.FLOAT,
         allowNull:false,
-        defaultValue:100.3
-        // NB module tontine : ce defaut de 100,3 FCFA s'applique a toute
-        // transaction creee sans preciser les frais. Les mouvements internes
-        // d'une tontine (cotisation, versement, caution, amende) doivent
-        // passer frais: 0 explicitement.
+        defaultValue:0
+        // Le defaut etait de 100,3 FCFA : toute ecriture creee sans preciser
+        // les frais en heritait, alors qu'aucun portefeuille n'etait debite
+        // de ce montant. Le tableau de bord, qui somme cette colonne pour
+        // annoncer les benefices, comptait donc un revenu jamais encaisse.
+        //
+        // Des frais doivent correspondre a de l'argent reellement preleve :
+        // le defaut est 0, et c'est a l'operation qui prend une commission de
+        // l'inscrire explicitement.
     },
     // --- Module tontine : references souples, sans contrainte ---
     groupeTontineId:{

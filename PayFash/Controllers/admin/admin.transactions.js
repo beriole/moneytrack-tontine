@@ -64,9 +64,25 @@ const benefices = async (req, res) => {
             group: ['type'], raw: true
         });
 
+        // Le seul revenu reellement encaisse a ce jour : la commission
+        // prelevee sur les pots de tontine, transferee depuis la caisse du
+        // groupe vers le compte de la plateforme. La colonne `frais`, elle,
+        // a longtemps porte un defaut de 100,3 FCFA que personne ne debitait
+        // (voir la migration 20260906120000) : sur une base ancienne elle
+        // annonce un revenu fantome. On publie les deux, distinctement.
+        const revenuPlateforme = await Transaction.sum('montant', {
+            where: { ...where, type: 'frais_plateforme' }
+        });
+
         return res.json({
             success: true,
-            data: { beneficesTotal: totalFrais || 0, volumeTotal: totalVolume || 0, parType }
+            data: {
+                beneficesTotal: totalFrais || 0,
+                revenuPlateforme: revenuPlateforme || 0,
+                volumeTotal: totalVolume || 0,
+                parType,
+                note: "beneficesTotal est la somme de la colonne 'frais' ; seul revenuPlateforme correspond a de l'argent effectivement encaisse."
+            }
         });
     } catch (error) {
         console.error('benefices:', error);
