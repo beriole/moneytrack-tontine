@@ -22,11 +22,21 @@ const ENV = require('../../config/index');
 const STATUTS = ['CREATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'EXPIRED'];
 
 class ErreurFapshi extends Error {
-    constructor(code, message, corps) {
+    /**
+     * `definitif` dit si l'echec est CERTAIN.
+     *
+     * C'est la distinction qui compte pour un versement : un refus explicite
+     * de Fapshi (4xx) ou une requete jamais partie signifient qu'aucun argent
+     * n'a bouge — on peut rembourser. Un delai depasse, une coupure reseau ou
+     * un 5xx ne disent rien : Fapshi a peut-etre execute l'ordre. Rembourser
+     * dans ce cas ferait sortir l'argent deux fois.
+     */
+    constructor(code, message, corps, definitif = false) {
         super(message);
         this.code = code;
         this.name = 'ErreurFapshi';
         this.corps = corps;
+        this.definitif = definitif;
     }
 }
 
@@ -40,7 +50,8 @@ class FapshiService {
 
     static _entetes() {
         if (!this.configure()) {
-            throw new ErreurFapshi(503, "Fapshi n'est pas configure : renseignez FAPSHI_API_USER et FAPSHI_API_KEY");
+            // Aucune requete n'est partie : l'echec est certain.
+            throw new ErreurFapshi(503, "Fapshi n'est pas configure : renseignez FAPSHI_API_USER et FAPSHI_API_KEY", null, true);
         }
         return {
             'Content-Type': 'application/json',
@@ -69,18 +80,23 @@ class FapshiService {
                 throw new ErreurFapshi(
                     reponse.status,
                     donnees.message || `Fapshi a repondu ${reponse.status}`,
-                    donnees
+                    donnees,
+                    // Un 4xx est un refus explicite : la demande a ete lue et
+                    // rejetee, rien n'a bouge. Un 5xx est une panne de leur
+                    // cote, qui ne dit rien de l'etat de l'operation.
+                    reponse.status < 500
                 );
             }
             return donnees;
         } catch (e) {
             if (e.name === 'ErreurFapshi') throw e;
             if (e.name === 'AbortError') {
-                throw new ErreurFapshi(504, "Fapshi n'a pas repondu a temps");
+                // Delai depasse : la requete est peut-etre arrivee.
+                throw new ErreurFapshi(504, "Fapshi n'a pas repondu a temps", null, false);
             }
             // Panne reseau : ne jamais laisser croire que le paiement a
             // echoue — on ne sait pas. Le statut reste a verifier.
-            throw new ErreurFapshi(502, `Fapshi injoignable : ${e.message}`);
+            throw new ErreurFapshi(502, `Fapshi injoignable : ${e.message}`, null, false);
         }
     }
 
@@ -96,7 +112,7 @@ class FapshiService {
     static async initierCollecte({ montant, email, clientId, reference, message, urlRetour, webhook }) {
         const somme = Math.round(Number(montant));
         if (!(somme >= ENV.PAIEMENT_MONTANT_MIN)) {
-            throw new ErreurFapshi(400, `Le montant minimal accepte est de ${ENV.PAIEMENT_MONTANT_MIN} FCFA`);
+            throw new ErreurFapshi(400, `Le montant minimal accepte est de ${ENV.PAIEMENT_MONTANT_MIN} FCFA`, null, true);
         }
 
         const corps = {
@@ -120,7 +136,7 @@ class FapshiService {
     static async debitDirect({ montant, telephone, medium, nom, email, clientId, reference, message }) {
         const somme = Math.round(Number(montant));
         if (!(somme >= ENV.PAIEMENT_MONTANT_MIN)) {
-            throw new ErreurFapshi(400, `Le montant minimal accepte est de ${ENV.PAIEMENT_MONTANT_MIN} FCFA`);
+            throw new ErreurFapshi(400, `Le montant minimal accepte est de ${ENV.PAIEMENT_MONTANT_MIN} FCFA`, null, true);
         }
 
         const corps = {

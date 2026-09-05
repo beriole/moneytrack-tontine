@@ -61,8 +61,20 @@ export default function Retrait() {
       try {
         setEnvoi(true);
         const { data } = await initierRetrait({ montant: somme, telephone, medium: operateur });
-        setAttente({ reference: data.reference, montant: somme });
         if (wallet?.fetchSolde) await wallet.fetchSolde();
+
+        // Le serveur n'a pas pu joindre l'opérateur : il ne sait pas si le
+        // versement est parti. Sonder ne servirait à rien — il faut le dire
+        // et surtout empêcher une relance, qui enverrait l'argent deux fois.
+        if (data.aVerifier) {
+          return Alert.alert(
+            'Retrait en vérification',
+            `${data.message}\n\nRéférence ${data.reference}`,
+            [{ text: 'Compris', onPress: () => navigation.goBack() }]
+          );
+        }
+
+        setAttente({ reference: data.reference, montant: somme });
         minuterie.current = setInterval(() => sonder(data.reference), 6000);
       } catch (e) {
         Alert.alert('Retrait impossible', messageErreur(e));
@@ -99,6 +111,12 @@ export default function Retrait() {
         setAttente(null);
         if (wallet?.fetchSolde) await wallet.fetchSolde();
         Alert.alert('Retrait non abouti', 'Votre solde vous a été restitué. Vous pouvez réessayer.');
+      } else if (data.statut === 'A_VERIFIER') {
+        // Issue inconnue : surtout ne pas inviter à réessayer.
+        clearInterval(minuterie.current);
+        setAttente(null);
+        if (wallet?.fetchSolde) await wallet.fetchSolde();
+        Alert.alert('Retrait en vérification', data.message || 'Le montant reste réservé le temps de la vérification.');
       }
     } catch (e) { /* un sondage rate n'est pas un echec de retrait */ }
   };

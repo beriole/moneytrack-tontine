@@ -169,6 +169,18 @@ class PaiementService {
         if (['FAILED', 'EXPIRED'].includes(paiement.status)) {
             return { reference, statut: paiement.status, creedite: false, deja: true };
         }
+        // Retrait dont l'issue est inconnue et sans identifiant fournisseur :
+        // il n'y a rien a interroger. On le dit clairement au lieu de laisser
+        // l'application sonder dans le vide.
+        if (paiement.status === 'A_VERIFIER' && !paiement.providerTxId) {
+            return {
+                reference, statut: 'A_VERIFIER', creedite: false, aVerifier: true,
+                montant: nombre(paiement.montant),
+                message: "Retrait en cours de verification aupres de l'operateur. "
+                    + "Le montant reste reserve ; ne relancez pas l'operation."
+            };
+        }
+
         if (!paiement.providerTxId) throw new ErreurPaiement(409, "Ce paiement n'a jamais ete transmis au fournisseur");
 
         const etat = await FapshiService.statut(paiement.providerTxId);
@@ -298,23 +310,77 @@ class PaiementService {
         });
 
         // 2. Demander le versement.
+        //
+        //    Le catch ne couvre QUE l'appel au fournisseur : une erreur de
+        //    base survenue apres un versement reussi ne doit pas etre prise
+        //    pour un refus.
+        let r;
         try {
-            const r = await FapshiService.verser({
+            r = await FapshiService.verser({
                 montant: somme, telephone: numero, medium: medium || 'mobile money',
                 nom: client.nom, email: client.email, clientId, reference
             });
-            await paiement.update({ providerTxId: r.transId, payToken: r.transId, donnees: r });
+        } catch (e) {
+            // Refus CERTAIN (4xx, requete jamais partie) : rien n'a bouge
+            // chez le fournisseur, on rend l'argent immediatement.
+            if (e.definitif) {
+                await this._rembourser(paiement, `Retrait refuse : ${e.message}`);
+                throw new ErreurPaiement(502, `${e.message} — votre solde a ete restitue.`);
+            }
 
+            // Issue INCONNUE (delai depasse, coupure reseau, 5xx). Fapshi a
+            // peut-etre execute le versement. Recrediter ici ferait sortir
+            // l'argent deux fois : une fois vers le telephone, une fois sur
+            // le solde. On garde donc les fonds reserves et on marque
+            // l'operation a verifier — c'est le seul choix qui ne peut pas
+            // faire perdre d'argent a la plateforme ni au client.
+            await this._marquerAVerifier(paiement, e.message);
             return {
                 reference, paiementId: paiement.id, montant: somme, telephone: numero,
+                statut: 'A_VERIFIER',
+                aVerifier: true,
                 soldeApres: arrondir(portefeuille.solde),
-                message: 'Retrait demande. Vous recevrez le montant sur votre telephone.'
+                message: "Nous n'avons pas pu confirmer ce retrait aupres de l'operateur. "
+                    + "Le montant reste reserve le temps de la verification : il vous sera "
+                    + "restitue s'il n'a pas ete envoye. Ne relancez pas le retrait."
             };
-        } catch (e) {
-            // Le fournisseur a refuse : on rend l'argent immediatement.
-            await this._rembourser(paiement, `Retrait refuse : ${e.message}`);
-            throw new ErreurPaiement(502, `${e.message} — votre solde a ete restitue.`);
         }
+
+        await paiement.update({ providerTxId: r.transId, payToken: r.transId, donnees: r });
+
+        return {
+            reference, paiementId: paiement.id, montant: somme, telephone: numero,
+            statut: 'PENDING',
+            soldeApres: arrondir(portefeuille.solde),
+            message: 'Retrait demande. Vous recevrez le montant sur votre telephone.'
+        };
+    }
+
+    /**
+     * Retrait dont on ignore le sort. Ni reussi, ni echoue : a verifier.
+     *
+     * Sans transId, aucune reconciliation automatique n'est possible — c'est
+     * precisement pourquoi l'operation doit rester visible et bloquee plutot
+     * que resolue au hasard. `paiementsAVerifier()` la remonte au back-office.
+     */
+    static async _marquerAVerifier(paiement, motif) {
+        await paiement.update({
+            status: 'A_VERIFIER',
+            motif: `Issue inconnue, a verifier aupres de Fapshi : ${motif}`
+        });
+        await Transaction.update(
+            { statut: 'A verifier' },
+            { where: { reference: paiement.reference } }
+        );
+    }
+
+    /** Retraits dont l'issue n'a jamais pu etre etablie. A traiter a la main. */
+    static async paiementsAVerifier(limite = 100) {
+        return Paiement.findAll({
+            where: { fournisseur: 'fapshi', status: 'A_VERIFIER' },
+            order: [['date', 'ASC']],
+            limit: Math.min(200, limite)
+        });
     }
 
     static async _rembourser(paiement, motif) {
@@ -404,7 +470,18 @@ class PaiementService {
             limit: 100
         });
 
-        const rapport = { examines: enAttente.length, credites: 0, echoues: 0, toujoursEnAttente: 0, erreurs: [] };
+        // Les retraits « a verifier » n'ont pas d'identifiant fournisseur : la
+        // reconciliation ne peut rien pour eux. On les compte quand meme pour
+        // qu'ils apparaissent dans le journal du planificateur plutot que de
+        // dormir en base sans que personne ne le sache.
+        const aVerifier = await Paiement.count({
+            where: { fournisseur: 'fapshi', status: 'A_VERIFIER' }
+        });
+
+        const rapport = {
+            examines: enAttente.length, credites: 0, echoues: 0,
+            toujoursEnAttente: 0, aVerifierManuellement: aVerifier, erreurs: []
+        };
         for (const p of enAttente) {
             try {
                 const r = await this.confirmer(p.reference);
