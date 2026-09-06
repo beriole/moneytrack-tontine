@@ -1,7 +1,16 @@
 const dotenv = require('dotenv');
-// override:true => les valeurs du .env priment sur les variables d'environnement
-// systeme (ex: HOSTNAME, defini par Windows comme le nom de la machine).
-dotenv.config({ override: true });
+const path = require('path');
+
+// Le .env est cherche a cote du projet, PAS dans le repertoire courant.
+// dotenv resout par defaut './.env' depuis le CWD : lancee depuis la racine
+// du depot plutot que depuis PayFash/, la moindre commande — un script, une
+// migration — repartait sans aucune configuration, et echouait beaucoup plus
+// loin sur un « Dialect needs to be explicitly supplied ».
+//
+// override:true => les valeurs du .env priment sur les variables
+// d'environnement systeme (ex: HOSTNAME, defini par Windows comme le nom de
+// la machine).
+dotenv.config({ path: path.join(__dirname, '..', '.env'), override: true });
 
 // Note : il n'y a pas de secret JWT ici. Les jetons sont signes en RS256 avec
 // la paire de cles de .private/ (private.pem / public.pem). La variable
