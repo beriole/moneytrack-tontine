@@ -29,6 +29,14 @@ solidarité (caisse 3) est hors périmètre.
 
 Gouvernance : rôles président / trésorier / censeur / secrétaire, votes, contrats signés.
 
+Un groupe **gelé** par l'administration ne bouge plus d'argent. La distinction
+compte : ce qui crée un engagement — verser le pot, apporter, décaisser un
+crédit, échanger un tour — est bloqué dès le gel et sur un groupe terminé ; ce
+qui *solde une dette* envers le groupe — régler une amende, rembourser un
+crédit, saisir ou rendre une caution, clore l'exercice — reste possible sur un
+groupe terminé, sans quoi un crédit encore dehors à la fin de la rotation
+serait irremboursable.
+
 **Ce n'est pas un module juxtaposé.** Une tontine est simultanément une ligne de budget,
 une entrée de trésorerie datée, une épargne et de l'argent immobilisé. L'application
 distingue donc quatre soldes — **brut / engagé / immobilisé / disponible** — exposés par
@@ -76,7 +84,7 @@ vierge, elles échouent. Sur une base neuve, `npm start` suffit. Sur une base
 déjà en service, arrêtez le serveur, sauvegardez, puis :
 
 ```bash
-npx sequelize-cli db:migrate    # 9 migrations, toutes idempotentes
+npx sequelize-cli db:migrate    # 11 migrations, toutes idempotentes
 ```
 
 ### Application mobile
@@ -84,10 +92,13 @@ npx sequelize-cli db:migrate    # 9 migrations, toutes idempotentes
 ```bash
 cd payfash-expo
 npm install
-cp .env.example .env            # renseigner EXPO_PUBLIC_GROQ_API_KEY
-# Ajuster utils/config.js avec l'IP LAN du backend
+cp .env.example .env            # EXPO_PUBLIC_API_URL et EXPO_PUBLIC_GROQ_API_KEY
 npx expo start                  # scanner le QR avec Expo Go (SDK 54)
 ```
+
+`EXPO_PUBLIC_API_URL` doit porter l'**IP LAN** de la machine qui fait tourner le
+backend — jamais `localhost`, qui désignerait le téléphone lui-même. Sur
+émulateur Android, `http://10.0.2.2:3000`.
 
 ## Vérification
 
@@ -135,6 +146,11 @@ Ne jamais committer de clés.
 `POST /wallet/deposit` et `POST /wallet/withdraw` répondent volontairement **410 Gone**.
 Ils créditaient un portefeuille sans contrepartie réelle — donc créaient de l'argent.
 Tout mouvement passe désormais par `/paiement/*`, adossé à Fapshi.
+
+Un compte dont l'adresse email n'est pas vérifiée peut utiliser l'application,
+mais **ne peut ni recharger ni retirer** : le code OTP existait depuis toujours
+sans que rien ne le lise. La connexion, elle, reste ouverte — la fermer
+mettrait dehors les comptes déjà créés.
 
 `TONTINE_CLIENT_PLATEFORME_ID` doit désigner un client existant. Sans lui, les frais de
 plateforme n'ont pas de destinataire et ne sont **pas prélevés, silencieusement**.
