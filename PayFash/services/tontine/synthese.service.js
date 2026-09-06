@@ -250,7 +250,9 @@ class SyntheseService {
             const g = m.groupe;
             if (!g || g.type === 'rotative') continue;
             try {
-                const apports = await EpargneService.apportsParMembre(g.id, null);
+                // Exercice en cours seulement : les apports deja restitues a
+                // la derniere casse ne sont plus immobilises.
+                const apports = await EpargneService.apportsExercice(g.id, null);
                 const mien = arrondir(apports[clientId] || 0);
                 if (mien > 0) {
                     lignes.push({
@@ -274,6 +276,38 @@ class SyntheseService {
      * Le chiffre que toute l'application devrait afficher a la place du
      * solde brut.
      */
+    /**
+     * Ce que le client doit sortir dans les `jours` prochains.
+     *
+     * Extrait de soldeReel pour que le service de paiement puisse l'opposer
+     * a un retrait sans dependre du reste de la synthese. Ne leve jamais :
+     * un client sans tontine n'a simplement aucun engagement.
+     */
+    static async engagementsSous(clientId, jours = HORIZON_COURT) {
+        try {
+            const limite = new Date(Date.now() + jours * 86400000);
+            const sorties = await this._sorties(clientId);
+            return arrondir(
+                sorties.filter(l => new Date(l.date) <= limite).reduce((s, l) => s + l.montant, 0)
+            );
+        } catch (e) {
+            console.log('[tontine] engagements illisibles :', e.message);
+            return 0;
+        }
+    }
+
+    /**
+     * Portefeuille de reglement : celui que la tontine et les retraits
+     * debitent reellement. Le courant, sinon le principal, sinon le premier
+     * actif — la meme cascade que commun.portefeuilleClient.
+     */
+    static async _portefeuilleReglement(clientId) {
+        const base = { ClientPortefeuilleId: clientId, estActif: true };
+        return await Portefeuille.findOne({ where: { ...base, typePortefeuille: 'courant' } })
+            || await Portefeuille.findOne({ where: { ...base, estPrincipal: true } })
+            || await Portefeuille.findOne({ where: base });
+    }
+
     static async soldeReel(clientId) {
         const portefeuilles = await Portefeuille.findAll({
             where: { ClientPortefeuilleId: clientId, estActif: true }
@@ -290,13 +324,23 @@ class SyntheseService {
         const engageTotal = arrondir(sorties.reduce((s, l) => s + l.montant, 0));
         const exigible = arrondir(sorties.filter(l => l.enRetard).reduce((s, l) => s + l.montant, 0));
 
+        // `brut` somme TOUS les portefeuilles, mais un retrait ne debite que
+        // celui de reglement : annoncer un disponible calcule sur le brut
+        // promettait de l'argent qui dort dans une epargne ou un projet, et
+        // le serveur repondait ensuite « solde insuffisant ». On publie donc
+        // aussi ce qui est reellement retirable, tout de suite.
+        const pfReglement = await this._portefeuilleReglement(clientId);
+        const soldeReglement = pfReglement ? arrondir(pfReglement.solde) : 0;
+
         return {
             brut,
+            soldeReglement,                             // ce qui est sur le compte debite
             exigible,                                   // du maintenant, bloque la suite
             engage30j: engageCourt,
             engageTotal,
             immobilise: arrondir(immobilise.reduce((s, l) => s + l.montant, 0)),
             disponible: arrondir(brut - engageCourt),   // ce qu'on peut vraiment depenser ce mois
+            retirable: arrondir(Math.max(0, soldeReglement - engageCourt)), // opposable par le serveur
             alerte: brut < engageCourt
                 ? `Vos engagements des 30 prochains jours (${engageCourt}) depassent votre solde (${brut}).`
                 : null

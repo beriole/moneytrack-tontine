@@ -19,9 +19,11 @@ import { WalletContext } from '../../utils/WalletContext';
 //  argent ne sorte : l'utilisateur perdait son argent. Ici Fapshi verse
 //  reellement sur le telephone.
 //
-//  Le montant retirable n'est pas le solde brut mais le solde DISPONIBLE :
-//  retirer ce qui est deja promis a une cotisation, c'est se garantir une
-//  amende la semaine suivante.
+//  Le montant retirable n'est ni le solde brut ni la somme de tous les
+//  portefeuilles : c'est le solde du compte debite, engagements des 30
+//  prochains jours deduits. Retirer ce qui est deja promis a une cotisation,
+//  c'est se garantir une amende la semaine suivante — et le serveur oppose
+//  desormais cette regle, le depassement devant etre demande explicitement.
 // =====================================================================
 
 const OPERATEURS = [
@@ -48,8 +50,14 @@ export default function Retrait() {
 
   const somme = parseInt(montant, 10) || 0;
   const brut = solde ? solde.brut : (wallet?.totalSolde || 0);
-  const disponible = solde ? solde.disponible : brut;
-  const depasse = somme > disponible;
+  // `retirable` porte sur le compte réellement débité, engagements déduits.
+  // `disponible` se calcule sur la somme de TOUS les portefeuilles : il
+  // promettait de l'argent dormant sur une épargne, que le serveur refusait
+  // ensuite pour solde insuffisant.
+  const retirable = solde
+    ? (solde.retirable !== undefined ? solde.retirable : solde.disponible)
+    : brut;
+  const depasse = somme > retirable;
 
   const lancer = async () => {
     if (somme < 100) return Alert.alert('Montant invalide', 'Le minimum est de 100 FCFA.');
@@ -57,10 +65,13 @@ export default function Retrait() {
       return Alert.alert('Numéro requis', 'Saisissez le numéro qui recevra le montant.');
     }
 
-    const confirmer = async () => {
+    const confirmer = async (accepterRisque = false) => {
       try {
         setEnvoi(true);
-        const { data } = await initierRetrait({ montant: somme, telephone, medium: operateur });
+        // Le serveur oppose désormais les engagements des 30 prochains jours.
+        // Passer outre est une décision de l'utilisateur, transmise telle
+        // quelle — plus un simple avertissement que l'API ignorait.
+        const { data } = await initierRetrait({ montant: somme, telephone, medium: operateur, accepterRisque });
         if (wallet?.fetchSolde) await wallet.fetchSolde();
 
         // Le serveur n'a pas pu joindre l'opérateur : il ne sait pas si le
@@ -85,9 +96,9 @@ export default function Retrait() {
 
     if (depasse) {
       Alert.alert(
-        'Au-delà de votre disponible',
-        `${fcfa(somme)} dépasse votre solde disponible de ${fcfa(disponible)}. Le reste est engagé dans vos cotisations à venir : le retirer vous exposerait à une amende.`,
-        [{ text: 'Annuler', style: 'cancel' }, { text: 'Retirer quand même', style: 'destructive', onPress: confirmer }]
+        'Au-delà de ce que vous pouvez retirer',
+        `${fcfa(somme)} dépasse ce que vous pouvez retirer (${fcfa(retirable)}). Le reste est engagé dans vos cotisations à venir : le retirer vous exposerait à une amende.`,
+        [{ text: 'Annuler', style: 'cancel' }, { text: 'Retirer quand même', style: 'destructive', onPress: () => confirmer(true) }]
       );
     } else {
       confirmer();
@@ -161,7 +172,7 @@ export default function Retrait() {
           <Ligne label="Solde total" valeur={fcfa(brut)} />
           {solde && <Ligne label="Engagé sous 30 jours" valeur={fcfa(solde.engage30j)} couleur={colors.warning} />}
           {solde && <Ligne label="Immobilisé (cautions)" valeur={fcfa(solde.immobilise)} couleur={colors.accent} />}
-          <Ligne label="Retirable sans risque" valeur={fcfa(disponible)} couleur={colors.success} dernier />
+          <Ligne label="Retirable sans risque" valeur={fcfa(retirable)} couleur={colors.success} dernier />
         </View>
 
         <Text style={s.label}>Montant (FCFA)</Text>
@@ -173,9 +184,9 @@ export default function Retrait() {
           placeholder="5000"
           placeholderTextColor={colors.textMuted}
         />
-        <TouchableOpacity onPress={() => setMontant(String(Math.max(0, Math.floor(disponible))))}>
+        <TouchableOpacity onPress={() => setMontant(String(Math.max(0, Math.floor(retirable))))}>
           <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600', marginTop: 8 }}>
-            Retirer tout le disponible ({fcfa(disponible)})
+            Retirer tout le retirable ({fcfa(retirable)})
           </Text>
         </TouchableOpacity>
 
@@ -194,8 +205,8 @@ export default function Retrait() {
 
         {depasse && somme > 0 && (
           <Alerte
-            titre="Au-delà de votre disponible"
-            texte={`${fcfa(somme - disponible)} de plus que ce que vous pouvez retirer sans compromettre vos cotisations à venir.`}
+            titre="Au-delà de ce que vous pouvez retirer"
+            texte={`${fcfa(somme - retirable)} de plus que ce que vous pouvez retirer sans compromettre vos cotisations à venir.`}
           />
         )}
 

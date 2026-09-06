@@ -44,7 +44,11 @@ class PartageService {
             ? arrondir((await Portefeuille.findByPk(groupe.portefeuilleEpargneId, { transaction: t })).solde)
             : 0;
 
-        const apports = await EpargneService.apportsParMembre(groupeId, t);
+        // Apports de l'exercice EN COURS uniquement. Lus sur tout l'historique,
+        // ils incluaient ceux deja rendus a la casse precedente : `produit`
+        // devenait massivement negatif des le deuxieme exercice, le controle
+        // de repartition echouait, et la cloture etait refusee pour toujours.
+        const apports = await EpargneService.apportsExercice(groupeId, t);
         const membres = await TontineMembre.findAll({
             where: { groupeId, statut: 'actif' },
             include: [{ model: Client, as: 'client', attributes: ['id', 'nom'] }],

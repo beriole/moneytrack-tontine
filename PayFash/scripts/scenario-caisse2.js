@@ -234,7 +234,40 @@ const acteur = (id) => ({ clientId: id });
             () => PartageService.cloturer(acteur(awa.id), groupe.id, 2026));
 
         // =============================================================
-        titre('8. Conservation de la monnaie');
+        //  Le scenario s'arretait ici, sur un seul exercice. C'est ce qui
+        //  masquait le defaut : les apports par membre etaient lus sur tout
+        //  l'historique, alors que la casse remet le pool a zero et vide la
+        //  caisse. Au deuxieme exercice, `produit = solde - apports` devenait
+        //  massivement negatif et la cloture etait refusee pour toujours.
+        // =============================================================
+        titre('8. Un deuxieme exercice se cloture aussi');
+
+        const APPORTS2 = [15000, 5000];   // Awa et Bertrand seulement
+        await EpargneService.apporter(awa.id, groupe.id, APPORTS2[0]);
+        await EpargneService.apporter(bertrand.id, groupe.id, APPORTS2[1]);
+
+        const etat2 = await EpargneService.etat(awa.id, groupe.id);
+        verifier('les apports rendus a la casse ne comptent plus : ' + etat2.monApport,
+            etat2.monApport === APPORTS2[0],
+            'attendu ' + APPORTS2[0] + ' et non le cumul historique ' + (APPORTS[0] + APPORTS2[0]));
+
+        const sim2 = await PartageService.simuler(awa.id, groupe.id);
+        verifier('solde de la caisse = ' + sim2.soldeCaisse, sim2.soldeCaisse === 20000);
+        verifier('produit du 2e exercice = 0 (aucun credit, aucune amende)', sim2.produit === 0,
+            'produit = ' + sim2.produit);
+        verifier('la repartition est controlee', sim2.controle === true);
+
+        const casse2 = await PartageService.cloturer(acteur(awa.id), groupe.id, 2027);
+        verifier('la casse 2027 passe', casse2.totalDistribue === 20000,
+            'distribue = ' + casse2.totalDistribue);
+        verifier('chacun reprend exactement son apport de l exercice',
+            arrondir(casse2.detail.find(d => d.clientId === awa.id).total) === APPORTS2[0]
+            && arrondir(casse2.detail.find(d => d.clientId === bertrand.id).total) === APPORTS2[1]);
+        verifier('la caisse est de nouveau vide',
+            await soldePf((await TontineGroupe.findByPk(groupe.id)).portefeuilleEpargneId) === 0);
+
+        // =============================================================
+        titre('9. Conservation de la monnaie');
         let delta = 0;
         for (const c of clients) {
             const fin = await soldeDe(c.id);

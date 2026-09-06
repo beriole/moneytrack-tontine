@@ -54,6 +54,25 @@ class PaiementService {
         return pf;
     }
 
+    /**
+     * Ce que le client doit sortir dans les 30 jours.
+     *
+     * Charge paresseusement le module tontine : le noyau des paiements ne
+     * doit pas en dependre au chargement, et un deploiement sans tontine
+     * doit continuer a retirer normalement. Toute erreur vaut « aucun
+     * engagement connu » — on ne bloque pas un retrait sur une lecture
+     * accessoire.
+     */
+    static async _engagements(clientId) {
+        try {
+            const SyntheseService = require('../tontine/synthese.service');
+            return arrondir(await SyntheseService.engagementsSous(clientId, 30));
+        } catch (e) {
+            console.log('[paiement] engagements illisibles :', e.message);
+            return 0;
+        }
+    }
+
     // -----------------------------------------------------------------
     //  Recharge
     // -----------------------------------------------------------------
@@ -285,11 +304,31 @@ class PaiementService {
 
         const reference = this._reference('RET');
 
+        // Ce que le client doit sortir dans les 30 jours : cotisations de
+        // tontine, amendes, echeances de credit. Le retrait ne doit pas y
+        // toucher — sinon l'application encaisse une amende qu'elle a
+        // elle-meme rendue inevitable.
+        //
+        // C'etait jusqu'ici un simple avertissement dans l'ecran mobile, que
+        // l'API ignorait completement : un appel direct passait outre. La
+        // regle est desormais tenue par le serveur, et le depassement doit
+        // etre demande explicitement.
+        const engage = donnees.accepterRisque === true
+            ? 0
+            : await this._engagements(clientId);
+
         // 1. Reserver les fonds.
         const { paiement, portefeuille } = await db.transaction(async (t) => {
             const pf = await this._portefeuille(clientId, portefeuilleId, t, true);
             if (arrondir(pf.solde) < somme) {
                 throw new ErreurPaiement(402, `Solde insuffisant : ${arrondir(pf.solde)} disponible`);
+            }
+            const retirable = arrondir(Math.max(0, arrondir(pf.solde) - engage));
+            if (engage > 0 && somme > retirable) {
+                throw new ErreurPaiement(409,
+                    `Vous pouvez retirer ${retirable} FCFA. ${engage} FCFA sont engages dans vos echeances `
+                    + `des 30 prochains jours ; les retirer vous exposerait a une amende. `
+                    + `Renvoyez la demande avec accepterRisque: true pour passer outre.`);
             }
             await pf.update({ solde: arrondir(nombre(pf.solde) - somme) }, { transaction: t });
 

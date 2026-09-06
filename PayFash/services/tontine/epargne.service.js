@@ -41,10 +41,39 @@ class EpargneService {
         return pool;
     }
 
-    /** Apports cumules par membre, lus dans le grand livre. */
-    static async apportsParMembre(groupeId, t) {
+    /**
+     * Debut de l'exercice en cours : la date de la derniere casse, ou null
+     * si le groupe n'en a jamais tenu.
+     *
+     * C'est la piece qui manquait. La casse remet le pool a zero et vide la
+     * caisse, mais le grand livre, lui, garde toutes les ecritures. Sans
+     * cette borne, le deuxieme exercice comparait une caisse repartie de zero
+     * a des apports cumules depuis toujours : le « produit » devenait
+     * massivement negatif et la cloture etait refusee pour de bon.
+     */
+    static async debutExercice(groupeId, t) {
+        const { TontinePartage } = require('../../models');
+        const derniere = await TontinePartage.findOne({
+            where: { groupeId, statut: 'cloture' },
+            order: [['dateCloture', 'DESC']],
+            transaction: t
+        });
+        return derniere && derniere.dateCloture ? new Date(derniere.dateCloture) : null;
+    }
+
+    /**
+     * Apports cumules par membre, lus dans le grand livre.
+     *
+     * `depuis` borne la lecture a l'exercice en cours. Sans borne, on lit
+     * tout l'historique : c'est ce qu'il faut pour une cle d'idempotence,
+     * qui doit rester monotone, et seulement pour ca.
+     */
+    static async apportsParMembre(groupeId, t, depuis = undefined) {
+        const where = { groupeTontineId: groupeId, type: TYPE_APPORT };
+        if (depuis) where.date = { [Op.gt]: depuis };
+
         const lignes = await Transaction.findAll({
-            where: { groupeTontineId: groupeId, type: TYPE_APPORT },
+            where,
             attributes: ['ClientTransactionId', [fn('SUM', col('montant')), 'total']],
             group: ['ClientTransactionId'],
             raw: true,
@@ -53,6 +82,11 @@ class EpargneService {
         const parClient = {};
         for (const l of lignes) parClient[l.ClientTransactionId] = arrondir(l.total);
         return parClient;
+    }
+
+    /** Apports de l'exercice en cours, par membre. */
+    static async apportsExercice(groupeId, t) {
+        return this.apportsParMembre(groupeId, t, await this.debutExercice(groupeId, t));
     }
 
     // -----------------------------------------------------------------
@@ -74,15 +108,22 @@ class EpargneService {
             const caisse = await portefeuilleEpargne(groupe, t, true);
             await transferer(portefeuille, caisse, somme, t);
 
-            const dejaApporte = (await this.apportsParMembre(groupeId, t))[clientId] || 0;
+            // La reference d'idempotence s'appuie sur le cumul DEPUIS TOUJOURS :
+            // borne a l'exercice, il repartirait de 0 apres chaque casse et
+            // heurterait la reference d'un apport de l'exercice precedent.
+            const cumulHistorique = (await this.apportsParMembre(groupeId, t))[clientId] || 0;
             const transaction = await ecrireTransaction({
                 montant: somme,
                 type: TYPE_APPORT,
                 description: `Apport a la caisse d'epargne — ${groupe.nom}`,
                 clientId,
                 groupeId,
-                reference: `TNT-APP-${groupeId}-${clientId}-${dejaApporte}`
+                reference: `TNT-APP-${groupeId}-${clientId}-${cumulHistorique}`
             }, t);
+
+            // Ce que le membre a mis dans la caisse pour l'exercice en cours,
+            // apport compris : c'est ce chiffre qui donne sa part a la casse.
+            const apportExercice = (await this.apportsExercice(groupeId, t))[clientId] || 0;
 
             await pool.update({
                 apportsMembres: arrondir(nombre(pool.apportsMembres) + somme),
@@ -93,7 +134,7 @@ class EpargneService {
 
             return {
                 pool, transaction,
-                monApportTotal: arrondir(dejaApporte + somme),
+                monApportTotal: arrondir(apportExercice),
                 soldeRestant: arrondir(portefeuille.solde)
             };
         });
@@ -107,7 +148,9 @@ class EpargneService {
         const groupe = await TontineGroupe.findByPk(groupeId);
         const pool = await this.pool(groupeId, null);
 
-        const apports = await this.apportsParMembre(groupeId, null);
+        // Borne sur l'exercice : apres une casse, les apports rendus ne
+        // comptent plus dans les quote-parts du nouvel exercice.
+        const apports = await this.apportsExercice(groupeId, null);
         const membres = await TontineMembre.findAll({
             where: { groupeId, statut: 'actif' },
             include: [{ model: Client, as: 'client', attributes: ['id', 'nom'] }]
