@@ -8,7 +8,7 @@ const {
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, portefeuilleEpargne,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeActif, ecrireTransaction, transferer
 } = require('./commun');
 
 // =====================================================================
@@ -100,6 +100,7 @@ class EpargneService {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
 
+            exigerGroupeActif(groupe, "l'apport a la caisse");
             const membre = await exigerRole(groupeId, clientId, [], t);
             if (membre.statut !== 'actif') throw new ErreurTontine(403, 'Seul un membre actif peut alimenter la caisse');
 

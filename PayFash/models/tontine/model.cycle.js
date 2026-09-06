@@ -31,6 +31,11 @@ const TontineCycle = db.define("TontineCycle", {
         defaultValue: 'actif',
         comment: "en_defaut : echeance atteinte avec un pot incomplet"
     },
+    enchereOuverteJusqu: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Cloture des offres. Null = aucune enchere ouverte sur ce cycle. ouvrir() ne persistait rien : les offres etaient acceptees hors de toute fenetre."
+    },
     dateDebut: {
         type: DataTypes.DATE,
         allowNull: false

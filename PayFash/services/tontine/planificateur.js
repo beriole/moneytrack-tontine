@@ -3,6 +3,7 @@
 const CycleService = require('./cycle.service');
 const CreditService = require('./credit.service');
 const EchangeService = require('./echange.service');
+const EnchereService = require('./enchere.service');
 const { VoteService } = require('./vote.service');
 const NotificationService = require('./notification.service');
 const PrelevementService = require('./prelevement.service');
@@ -74,6 +75,12 @@ async function passe(maintenant = new Date()) {
     // 4. Marche des tours : une proposition non traitee expire.
     try { rapport.echanges = await EchangeService.traiterEchangesEchus(maintenant); }
     catch (e) { rapport.echanges = { erreur: e.message }; }
+
+    // 4 bis. Encheres : une fenetre fermee doit produire une adjudication.
+    // Sans cette passe, les offres deposees ne servaient a rien : le pot
+    // restait au beneficiaire d'origine.
+    try { rapport.encheres = await EnchereService.traiterEncheresEchues(maintenant); }
+    catch (e) { rapport.encheres = { erreur: e.message }; }
 
     // 5. Credit : constater les retards, basculer en defaut au 3e.
     try { rapport.credits = await CreditService.traiterEcheancesCredit(maintenant); }

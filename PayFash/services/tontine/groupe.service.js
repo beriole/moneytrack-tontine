@@ -22,7 +22,8 @@ class GroupeService {
         const {
             nom, description, type = 'rotative', montantParPeriode,
             frequence = 'mensuelle', membresMax, modeOrdre = 'tirage',
-            pourcentageCaution, bareme, destinationAmendes, modeAcces = 'prive', dateDebut
+            pourcentageCaution, bareme, destinationAmendes, modeAcces = 'prive', dateDebut,
+            cautionObligatoire = false
         } = donnees;
 
         if (!nom || !String(nom).trim()) throw new ErreurTontine(400, 'Le nom du groupe est obligatoire');
@@ -47,6 +48,9 @@ class GroupeService {
                 modeOrdre,
                 pourcentageCaution: pourcentageCaution !== undefined
                     ? nombre(pourcentageCaution) : ENV.TONTINE_CAUTION_DEFAUT,
+                // Quand il est leve, le groupe refuse de demarrer tant qu'un
+                // membre actif n'a pas depose sa caution.
+                cautionObligatoire: cautionObligatoire === true || cautionObligatoire === 'true',
                 bareme: bareme || null,
                 destinationAmendes: destinationAmendes
                     || (type === 'rotative' ? 'pot_cycle' : 'epargne'),
@@ -246,6 +250,11 @@ class GroupeService {
                 throw new ErreurTontine(409, 'Il faut au moins 2 membres actifs pour demarrer');
             }
 
+            // Le meme calcul que CautionService, sinon le controle du
+            // demarrage et le montant demande au membre divergeraient.
+            const CautionService = require('./caution.service');
+            const attenduCaution = CautionService.montantAttendu(groupe);
+
             // Ordre de passage
             let ordonnes = membres;
             let preuve = null;
@@ -255,8 +264,32 @@ class GroupeService {
             } else if (groupe.modeOrdre === 'anciennete') {
                 ordonnes = [...membres].sort((a, b) => new Date(a.dateAdhesion) - new Date(b.dateAdhesion));
             } else {
-                // 'vote' et 'enchere' : phase 4. En attendant, ordre d'adhesion.
+                // 'vote'    : l'ordre d'adhesion sert de file provisoire ; le
+                //             groupe la reecrit avec un scrutin 'elire_ordre'.
+                // 'enchere' : l'ordre initial n'a pas d'importance, le
+                //             beneficiaire de chaque cycle etant adjuge.
                 ordonnes = [...membres].sort((a, b) => a.id - b.id);
+            }
+
+            // La caution n'etait exigee nulle part : configuree a la creation,
+            // affichee dans l'application, jamais controlee. La cascade de
+            // recours caution -> garant pouvait donc etre vide des le depart.
+            if (groupe.cautionObligatoire) {
+                const { TontineCaution } = require('../../models');
+                const sans = [];
+                for (const m of ordonnes) {
+                    const caution = await TontineCaution.findOne({
+                        where: { groupeId, clientId: m.clientId }, transaction: t
+                    });
+                    const bloque = caution
+                        ? nombre(caution.montantBloque) - nombre(caution.montantUtilise) : 0;
+                    if (bloque < attenduCaution) sans.push(m.clientId);
+                }
+                if (sans.length) {
+                    throw new ErreurTontine(409,
+                        `${sans.length} membre(s) n'ont pas bloque leur caution de ${attenduCaution} FCFA. `
+                        + `Chacun doit la deposer avant le demarrage.`);
+                }
             }
 
             for (let i = 0; i < ordonnes.length; i++) {
@@ -282,7 +315,10 @@ class GroupeService {
             await groupe.update({
                 statut: 'actif',
                 numeroCycleActuel: 1,
-                dateDebut: debut
+                dateDebut: debut,
+                // Figee, sinon invérifiable : elle n'etait renvoyee qu'une fois
+                // dans la reponse HTTP de celui qui demarrait le groupe.
+                preuveTirage: preuve
             }, { transaction: t });
 
             return {

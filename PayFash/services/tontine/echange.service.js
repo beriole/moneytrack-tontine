@@ -7,7 +7,7 @@ const {
 } = require('../../models');
 const {
     ErreurTontine, nombre, arrondir,
-    portefeuilleClient, exigerRole, ecrireTransaction, transferer
+    portefeuilleClient, exigerRole, exigerGroupeActif, ecrireTransaction, transferer
 } = require('./commun');
 
 // =====================================================================
@@ -76,7 +76,7 @@ class EchangeService {
                 }
             }
 
-            return TontineEchangeTour.create({
+            const echange = await TontineEchangeTour.create({
                 groupeId,
                 demandeurId: clientId,
                 destinataireId: cible,
@@ -86,6 +86,20 @@ class EchangeService {
                 statut: 'en_attente',
                 expireLe: new Date(Date.now() + 24 * 3600 * 1000)
             }, { transaction: t });
+            return { echange, groupeNotif: groupe };
+        }).then(async ({ echange, groupeNotif }) => {
+            // Une proposition qui expire en 24 h et que le destinataire
+            // n'apprend jamais ne sert a rien. La notification existait sans
+            // appelant.
+            try {
+                const NotificationService = require('./notification.service');
+                const auteur = await Client.findByPk(echange.demandeurId);
+                await NotificationService.echangePropose(
+                    echange, groupeNotif, auteur ? auteur.nom : 'Un membre');
+            } catch (e) {
+                console.log("[tontine] notification d'echange non envoyee :", e.message);
+            }
+            return echange;
         });
     }
 
@@ -101,6 +115,7 @@ class EchangeService {
             }
 
             const groupe = await TontineGroupe.findByPk(echange.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeActif(groupe, "l'echange de tours");
             const demandeur = await TontineMembre.findOne({
                 where: { groupeId: echange.groupeId, clientId: echange.demandeurId },
                 transaction: t, lock: t.LOCK.UPDATE

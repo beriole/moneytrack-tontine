@@ -8,7 +8,7 @@ const {
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, caisseGroupe,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
 const CautionService = require('./caution.service');
 
@@ -116,6 +116,7 @@ class RecouvrementService {
 
             const cycle = await TontineCycle.findByPk(cotisation.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
             const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeNonGele(groupe, "l'appel au garant");
 
             if (!acteur.systeme) {
                 await exigerRole(groupe.id, acteur.clientId, ['president', 'tresorier'], t,
@@ -143,19 +144,75 @@ class RecouvrementService {
                 reference: `TNT-GAR-${cotisation.id}`
             }, t);
 
+            // « La dette n'est pas effacee, elle change de debiteur » — encore
+            // fallait-il l'ecrire. Seule la description de l'ecriture en
+            // portait la trace : rien n'etait interrogeable, et le membre
+            // defaillant ne devait plus rien a personne dans les donnees.
             await cotisation.update({
                 montantPaye: arrondir(nombre(cotisation.montantPaye) + reste),
                 statut: 'payee',
                 datePaiement: new Date(),
-                transactionId: transaction.id
+                transactionId: transaction.id,
+                garantPayeurId: membre.garantId,
+                montantAvanceGarant: arrondir(nombre(cotisation.montantAvanceGarant) + reste)
             }, { transaction: t });
 
             await cycle.update({
                 montantCollecte: arrondir(nombre(cycle.montantCollecte) + reste)
             }, { transaction: t });
 
-            return { cotisation, transaction, montantCouvert: reste, garantId: membre.garantId };
+            return {
+                cotisation, transaction, montantCouvert: reste,
+                garantId: membre.garantId,
+                defaillantNom: defaillant ? defaillant.nom : null,
+                groupeNotif: groupe
+            };
+        }).then(async (r) => {
+            // Le garant vient d'etre debite pour quelqu'un d'autre : il doit
+            // l'apprendre. La notification existait, elle n'etait appelee
+            // nulle part.
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.garantAppele(
+                    r.garantId, r.defaillantNom || 'un membre', r.groupeNotif, r.montantCouvert);
+            } catch (e) {
+                console.log('[tontine] notification au garant non envoyee :', e.message);
+            }
+            return r;
         });
+    }
+
+    /**
+     * Ce qu'un membre doit a ses garants, et ce que ses garants lui doivent.
+     * Sans cette vue, l'avance restait invisible des deux cotes.
+     */
+    static async creancesGarant(clientId, groupeId) {
+        const { TontineCotisation: Cot, TontineCycle: Cyc } = require('../../models');
+        const cycles = await Cyc.findAll({
+            where: groupeId ? { groupeId } : {}, attributes: ['id', 'groupeId', 'numeroCycle']
+        });
+        const parCycle = {};
+        for (const c of cycles) parCycle[c.id] = c;
+        const ids = cycles.map(c => c.id);
+        if (!ids.length) return { jeDois: [], onMeDoit: [] };
+
+        const avances = await Cot.findAll({
+            where: { cycleId: { [Op.in]: ids }, garantPayeurId: { [Op.ne]: null } }
+        });
+
+        const ligne = (c) => ({
+            cotisationId: c.id,
+            groupeId: parCycle[c.cycleId] ? parCycle[c.cycleId].groupeId : null,
+            cycle: parCycle[c.cycleId] ? parCycle[c.cycleId].numeroCycle : null,
+            montant: arrondir(nombre(c.montantAvanceGarant)),
+            debiteur: c.clientId,
+            garant: c.garantPayeurId
+        });
+
+        return {
+            jeDois: avances.filter(c => c.clientId === clientId).map(ligne),
+            onMeDoit: avances.filter(c => c.garantPayeurId === clientId).map(ligne)
+        };
     }
 
     /**
@@ -173,7 +230,16 @@ class RecouvrementService {
             if (!acteur.systeme) {
                 await exigerRole(groupeId, acteur.clientId, ['president'], t, 'exclure un membre');
             }
-            return this.exclureDansTransaction(acteur, groupe, clientId, motif, t);
+            const r = await this.exclureDansTransaction(acteur, groupe, clientId, motif, t);
+            return { ...r, groupeNotif: groupe, motifNotif: motif };
+        }).then(async (r) => {
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.membreExclu(r.membre.clientId, r.groupeNotif, r.motifNotif);
+            } catch (e) {
+                console.log("[tontine] notification d'exclusion non envoyee :", e.message);
+            }
+            return r;
         });
     }
 
@@ -221,16 +287,13 @@ class RecouvrementService {
                 orphelines = n;
             }
 
-            await TontineAmende.create({
-                groupeId,
-                membreId: membre.id,
-                clientId: membre.clientId,
-                motif: 'indiscipline',
-                montant: 0,
-                statut: 'annulee',
-                infligeePar: acteur.systeme ? null : acteur.clientId,
-                destination: groupe.destinationAmendes,
-                commentaire: `EXCLUSION — ${motif || 'motif non precise'}`
+            // Le motif etait consigne dans une TontineAmende de 0 FCFA au
+            // statut 'annulee' : une fausse amende, qui apparaissait ensuite
+            // dans « mes amendes » et dans celles du groupe. Il vit maintenant
+            // sur l'adhesion, la ou il decrit ce qu'il decrit.
+            await membre.update({
+                motifExclusion: motif || 'motif non precise',
+                dateExclusion: new Date()
             }, { transaction: t });
 
             const restants = await TontineMembre.count({

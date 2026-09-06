@@ -36,11 +36,24 @@ class NotificationTontineService {
                 .map(Number);
             if (!cibles.length) return null;
 
+            // Idempotence. Le planificateur passe toutes les 6 h et les
+            // fenetres de rappel durent 24 h : sans cle, le meme « cotisation
+            // due dans 3 jours » partait quatre fois, et un rappel de retard
+            // repartait a chaque passe, indefiniment. La cle est unique en
+            // base : la seconde insertion est refusee, pas dedoublonnee a la
+            // main dans une fenetre de temps approximative.
+            const cle = options.cle ? String(options.cle).slice(0, 140) : null;
+            if (cle) {
+                const deja = await Notification.findOne({ where: { cle } });
+                if (deja) return null;
+            }
+
             const notification = await Notification.create({
                 message,
                 dateEnvoie: new Date(),
                 Type: options.type || 'system',
                 categorie: CATEGORIE,
+                cle,
                 lien: options.lien || null
             });
 
@@ -48,6 +61,7 @@ class NotificationTontineService {
             await notification.addClients(cibles);
             return notification;
         } catch (e) {
+            if (e.name === 'SequelizeUniqueConstraintError') return null;   // deja envoyee
             console.log('[tontine] notification non envoyee :', e.message);
             return null;
         }
@@ -190,11 +204,18 @@ class NotificationTontineService {
      * difference entre une application qui aide et une qui sanctionne.
      */
     static async rappelsCotisations(maintenant = new Date()) {
-        const rapport = { j3: 0, j1: 0, jour: 0, retard: 0 };
+        const rapport = { j3: 0, j2: 0, j1: 0, jour: 0, retard: 0 };
         const jour = 86400000;
+        // Le jour calendaire sert de grain a la cle de retard : un membre en
+        // retard est relance une fois par jour, pas toutes les six heures.
+        const aujourdhui = new Date(maintenant).toISOString().slice(0, 10);
 
+        // Jalons contigus : (2,3] jours, (1,2], (0,1]. L'ancienne table
+        // sautait la fenetre (1,2] — aucun rappel a J-2 — et sa branche
+        // « dernier jour » etait inatteignable, j1 couvrant deja (0,1].
         const jalons = [
             { cle: 'j3', min: 2, max: 3, mot: 'dans 3 jours' },
+            { cle: 'j2', min: 1, max: 2, mot: 'apres-demain' },
             { cle: 'j1', min: 0, max: 1, mot: 'demain' },
         ];
 
@@ -214,24 +235,34 @@ class NotificationTontineService {
             const du = arrondir(impayees.reduce((s, c) => s + (nombre(c.montantDu) - nombre(c.montantPaye)), 0) / impayees.length);
             const lien = { ecran: 'Cotiser', params: { cycleId: cycle.id, groupeId: cycle.groupeId } };
 
+            // Une cle par destinataire : deux membres en retard sur le meme
+            // cycle doivent tous les deux etre prevenus.
+            const envoyerA = async (texte, suffixe, options = {}) => {
+                for (const c of clients) {
+                    await this.envoyer(c, texte,
+                        { ...options, lien, cle: `cot-${cycle.id}-${c}-${suffixe}` });
+                }
+            };
+
             if (reste < 0) {
-                await this.envoyer(clients,
+                await envoyerA(
                     `Cotisation en retard dans « ${cycle.groupe.nom} » : ${fcfa(du)}. Une amende court tant qu'elle n'est pas reglee.`,
-                    { type: 'alerte', lien });
+                    `retard-${aujourdhui}`, { type: 'alerte' });
                 rapport.retard += clients.length;
                 continue;
             }
 
             const jalon = jalons.find(j => reste > j.min * jour && reste <= j.max * jour);
             if (jalon) {
-                await this.envoyer(clients,
+                await envoyerA(
                     `Votre cotisation de ${fcfa(du)} pour « ${cycle.groupe.nom} » est due ${jalon.mot}.`,
-                    { lien });
+                    jalon.cle);
                 rapport[jalon.cle] += clients.length;
-            } else if (reste >= 0 && reste <= jour) {
-                await this.envoyer(clients,
+            } else if (reste >= 0 && reste <= jour / 24) {
+                // Derniere heure avant l'echeance.
+                await envoyerA(
                     `Dernier jour pour cotiser ${fcfa(du)} dans « ${cycle.groupe.nom} ».`,
-                    { type: 'alerte', lien });
+                    'jour', { type: 'alerte' });
                 rapport.jour += clients.length;
             }
         }
@@ -256,12 +287,18 @@ class NotificationTontineService {
             const restantes = await TontineCotisation.count({
                 where: { cycleId: cycle.id, statut: { [Op.ne]: 'payee' } }
             });
-            await this.envoyer(cycle.beneficiaireId,
+            // Deux etats possibles, donc deux cles : le beneficiaire est
+            // prevenu une fois que le pot approche, puis une fois qu'il est
+            // complet — mais pas quatre fois par jour dans chaque etat.
+            const envoye = await this.envoyer(cycle.beneficiaireId,
                 restantes === 0
                     ? `Le pot de « ${cycle.groupe.nom} » est complet : ${fcfa(cycle.montantAttendu)} vous attendent.`
                     : `Votre tour approche dans « ${cycle.groupe.nom} ». Il reste ${restantes} cotisation(s) a rentrer.`,
-                { lien: { ecran: 'DetailTontine', params: { groupeId: cycle.groupeId } } });
-            envoyes++;
+                {
+                    lien: { ecran: 'DetailTontine', params: { groupeId: cycle.groupeId } },
+                    cle: `tour-${cycle.id}-${restantes === 0 ? 'complet' : 'approche'}`
+                });
+            if (envoye) envoyes++;
         }
         return { envoyes };
     }

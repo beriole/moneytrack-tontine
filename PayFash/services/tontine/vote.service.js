@@ -92,9 +92,13 @@ class VoteService {
                 creePar: clientId
             }, { transaction: t });
         }).then(async (vote) => {
-            const NotificationService = require('./notification.service');
-            const groupe = await TontineGroupe.findByPk(vote.groupeId);
-            if (groupe) await NotificationService.voteOuvert(vote, groupe);
+            try {
+                const NotificationService = require('./notification.service');
+                const groupe = await TontineGroupe.findByPk(vote.groupeId);
+                if (groupe) await NotificationService.voteOuvert(vote, groupe);
+            } catch (e) {
+                console.log("[tontine] notification d'ouverture de scrutin non envoyee :", e.message);
+            }
             return vote;
         });
     }
@@ -205,7 +209,24 @@ class VoteService {
                 effet = { applique: false, detail: 'Vote non adopte : aucun effet' };
             }
 
-            return { vote, ...compte, effet };
+            return { vote, ...compte, effet, groupeId: vote.groupeId };
+        }).then(async (r) => {
+            // Un scrutin depouille sans que personne ne l'apprenne n'est pas
+            // une decision de groupe. La notification existait sans appelant.
+            try {
+                const NotificationService = require('./notification.service');
+                const groupe = await TontineGroupe.findByPk(r.groupeId);
+                if (groupe) {
+                    await NotificationService.voteResolu(r.vote, groupe, r.resultat, r.effet && r.effet.detail);
+                    if (r.vote.sujet === 'exclure' && r.resultat === 'approuve' && r.vote.cibleId) {
+                        await NotificationService.membreExclu(
+                            r.vote.cibleId, groupe, `Exclusion votee (scrutin #${r.vote.id})`);
+                    }
+                }
+            } catch (e) {
+                console.log('[tontine] notification de scrutin non envoyee :', e.message);
+            }
+            return r;
         });
     }
 

@@ -97,6 +97,17 @@ const TontineGroupe = db.define("TontineGroupe", {
         allowNull: false,
         defaultValue: 'prive'
     },
+    preuveTirage: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        comment: "Empreinte SHA-256 du tirage d'ordre, figee au demarrage. Elle etait calculee puis jetee : personne ne pouvait verifier a posteriori que l'ordre n'avait pas ete rejoue."
+    },
+    cautionObligatoire: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "Si vrai, le groupe refuse de demarrer tant qu'un membre actif n'a pas bloque sa caution"
+    },
     codeInvitation: {
         type: DataTypes.STRING(12),
         allowNull: false,

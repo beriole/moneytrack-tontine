@@ -8,7 +8,7 @@ const {
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, caisseGroupe, portefeuilleEpargne,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
 
 // =====================================================================
@@ -138,7 +138,19 @@ class AmendeService {
     //  Reglement
     // -----------------------------------------------------------------
     static async payer(clientId, amendeId) {
-        return db.transaction(async (t) => {
+        return db.transaction(async (t) => this.payerDans(clientId, amendeId, t));
+    }
+
+    /**
+     * Corps du reglement, dans une transaction FOURNIE.
+     *
+     * Le mandat de prelevement doit regler amendes et cotisation d'un seul
+     * bloc : tant que chaque etape ouvrait sa propre transaction, un echec en
+     * cours de route laissait les amendes payees et la cotisation ouverte —
+     * exactement le reglement partiel que la regle 1 du mandat interdit.
+     */
+    static async payerDans(clientId, amendeId, t) {
+        {
             const amende = await TontineAmende.findByPk(amendeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!amende) throw new ErreurTontine(404, 'Amende introuvable');
             if (amende.clientId !== clientId) throw new ErreurTontine(403, "Cette amende n'est pas la votre");
@@ -146,6 +158,7 @@ class AmendeService {
             if (amende.statut === 'annulee') throw new ErreurTontine(409, 'Cette amende a ete annulee');
 
             const groupe = await TontineGroupe.findByPk(amende.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeNonGele(groupe, "le reglement d'une amende");
             const montant = arrondir(amende.montant);
             const portefeuille = await portefeuilleClient(clientId, t, true);
 
@@ -202,7 +215,7 @@ class AmendeService {
             }, { transaction: t });
 
             return { amende, transaction, soldeRestant: arrondir(portefeuille.solde) };
-        });
+        }
     }
 
     static async annuler(acteur, amendeId, commentaire) {

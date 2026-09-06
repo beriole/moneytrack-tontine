@@ -136,6 +136,39 @@ async function exigerRole(groupeId, clientId, roles, t, action = 'cette action')
 }
 
 /**
+ * Un groupe gele ne bouge plus d'argent.
+ *
+ * Le back-office presente le gel comme une mesure conservatoire qui
+ * « suspend l'argent de plusieurs personnes ». En pratique, seule la
+ * cotisation testait le statut : le versement du pot — le plus gros
+ * mouvement — passait, comme l'apport, le decaissement de credit, le
+ * reglement d'amende, la liberation de caution et la casse annuelle.
+ */
+function exigerGroupeActif(groupe, action = 'cette operation') {
+    exigerGroupeNonGele(groupe, action);
+    if (groupe.statut === 'termine') {
+        throw new ErreurTontine(409, `« ${groupe.nom} » est termine : ${action} n'est plus possible`);
+    }
+}
+
+/**
+ * Variante pour les operations qui SOLDENT une dette envers le groupe :
+ * regler une amende, rembourser un credit, saisir une caution, clore
+ * l'exercice, restituer une caution.
+ *
+ * Un groupe termine doit pouvoir se liquider — sinon un credit encore
+ * dehors quand la rotation s'acheve serait irremboursable, et l'argent
+ * reste bloque des deux cotes. Seul le gel administratif les suspend.
+ */
+function exigerGroupeNonGele(groupe, action = 'cette operation') {
+    if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+    if (groupe.statut === 'suspendu') {
+        throw new ErreurTontine(409,
+            `« ${groupe.nom} » est gele par l'administration : ${action} est suspendue jusqu'au degel`);
+    }
+}
+
+/**
  * Ecrit une transaction du module tontine.
  *
  * Deux precautions par rapport au reste du projet :
@@ -178,5 +211,5 @@ async function transferer(source, destination, montant, t) {
 module.exports = {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, caisseGroupe, portefeuilleCaution, portefeuilleEpargne,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeActif, exigerGroupeNonGele, ecrireTransaction, transferer
 };

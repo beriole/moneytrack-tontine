@@ -10,7 +10,7 @@ const ENV = require('../../config/index');
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, portefeuilleEpargne,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeActif, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
 const { EpargneService } = require('./epargne.service');
 const EcheancierService = require('./echeancier.service');
@@ -139,6 +139,7 @@ class CreditService {
                 transaction: t, lock: t.LOCK.UPDATE
             });
             const groupe = await TontineGroupe.findByPk(pool.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeActif(groupe, "le decaissement d'un credit");
 
             if (!acteur.systeme) {
                 await exigerRole(groupe.id, acteur.clientId, ['president', 'tresorier'], t,
@@ -198,8 +199,19 @@ class CreditService {
                 demande, transaction,
                 echeances: lignes.length,
                 mensualite: lignes[0].montantDu,
-                totalARembourser: arrondir(demande.totalARembourser)
+                totalARembourser: arrondir(demande.totalARembourser),
+                groupeNotif: groupe
             };
+        }).then(async (r) => {
+            // L'emprunteur doit savoir que l'argent est parti et qu'un
+            // echeancier court. La notification existait sans appelant.
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.creditDecaisse(r.demande, r.groupeNotif);
+            } catch (e) {
+                console.log('[tontine] notification de decaissement non envoyee :', e.message);
+            }
+            return r;
         });
     }
 
@@ -223,6 +235,7 @@ class CreditService {
                 transaction: t, lock: t.LOCK.UPDATE
             });
             const groupe = await TontineGroupe.findByPk(pool.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeNonGele(groupe, "le remboursement d'un credit");
 
             const dejaPaye = nombre(echeance.montantPaye);
             const reste = arrondir(nombre(echeance.montantDu) - dejaPaye);

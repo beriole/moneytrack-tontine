@@ -2,7 +2,7 @@
 
 const { Op } = require('sequelize');
 const {
-    Client,
+    db, Client,
     TontineGroupe, TontineMembre, TontineCycle, TontineCotisation, TontineAmende
 } = require('../../models');
 const {
@@ -30,6 +30,22 @@ const NotificationService = require('./notification.service');
 //    3. rien ne s'execute apres l'echeance. Passe la date, c'est la
 //       procedure de defaut qui s'applique, pas un prelevement discret.
 // =====================================================================
+
+// Minuit du jour de l'echeance. La fenetre de prelevement s'ouvre a
+// « debut du jour de l'echeance moins n jours », et non a l'INSTANT de
+// l'echeance moins n jours : avec joursAvant = 0 l'ouverture tombait
+// exactement sur dateFinPrevue, or les cycles retenus sont ceux dont
+// l'echeance est encore a venir — les deux conditions s'excluaient et le
+// mandat « le jour de l'echeance » ne s'executait jamais.
+function debutDuJour(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function ouvertureFenetre(echeance, joursAvant) {
+    return new Date(debutDuJour(echeance).getTime() - joursAvant * 86400000);
+}
 
 class PrelevementService {
 
@@ -98,9 +114,12 @@ class PrelevementService {
         const besoin = arrondir(restant + totalAmendes);
         const manque = arrondir(Math.max(0, besoin - solde));
 
-        const dateEcheance = cotisation ? cotisation.dateEcheance : cycle ? cycle.dateFinPrevue : null;
+        // L'execution se cale sur cycle.dateFinPrevue : l'etat doit annoncer
+        // la meme date, sinon l'utilisateur lit un jour et le systeme en
+        // applique un autre des que les deux divergent.
+        const dateEcheance = cycle ? cycle.dateFinPrevue : (cotisation ? cotisation.dateEcheance : null);
         const datePrelevement = dateEcheance
-            ? new Date(new Date(dateEcheance).getTime() - membre.prelevementJoursAvant * 86400000)
+            ? ouvertureFenetre(dateEcheance, membre.prelevementJoursAvant)
             : null;
 
         return {
@@ -144,9 +163,11 @@ class PrelevementService {
                 const membre = await TontineMembre.findByPk(cotisation.membreId);
                 if (!membre || !membre.prelevementAuto || membre.statut !== 'actif') continue;
 
-                // La fenetre s'ouvre a J-n et se ferme a l'echeance.
-                const ouverture = new Date(cycle.dateFinPrevue).getTime() - membre.prelevementJoursAvant * 86400000;
-                if (maintenant.getTime() < ouverture) continue;
+                // La fenetre s'ouvre au debut du jour J-n et se ferme a
+                // l'echeance. Voir ouvertureFenetre : calee sur l'instant de
+                // l'echeance, elle etait vide pour joursAvant = 0.
+                const ouverture = ouvertureFenetre(cycle.dateFinPrevue, membre.prelevementJoursAvant);
+                if (maintenant.getTime() < ouverture.getTime()) continue;
 
                 rapport.examines++;
                 try {
@@ -183,33 +204,47 @@ class PrelevementService {
         const besoin = arrondir(totalAmendes + restant);
         if (besoin <= 0) return { preleve: false, montant: 0, raison: 'rien a regler' };
 
-        let portefeuille;
+        // Regles 1 et 2 dans UNE SEULE transaction.
+        //
+        // Le controle de solde se faisait hors transaction, puis chaque amende
+        // et la cotisation ouvraient la leur : un echec en cours de route —
+        // solde parti entre-temps, cotisation refusee — laissait les amendes
+        // payees et la cotisation ouverte. C'est exactement le reglement
+        // partiel que la regle 1 interdit. Tout passe ou rien ne passe.
         try {
-            portefeuille = await portefeuilleClient(clientId, null);
+            await db.transaction(async (t) => {
+                const portefeuille = await portefeuilleClient(clientId, t, true);
+
+                if (arrondir(portefeuille.solde) < besoin) {
+                    const manque = arrondir(besoin - arrondir(portefeuille.solde));
+                    throw Object.assign(new Error('solde insuffisant'), { insuffisant: true, manque });
+                }
+
+                // Les amendes d'abord : une amende due bloque la cotisation.
+                for (const a of amendes) {
+                    await AmendeService.payerDans(clientId, a.id, t);
+                }
+                await CycleService.cotiserDans(clientId, cycle.id, restant, t);
+            });
         } catch (e) {
-            await NotificationService.envoyer(clientId,
-                `Prelevement impossible pour « ${groupe.nom} » : aucun portefeuille actif.`,
-                { type: 'alerte', lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } } });
-            return { preleve: false, montant: 0, raison: 'aucun portefeuille' };
+            if (e.insuffisant) {
+                await NotificationService.envoyer(clientId,
+                    `Prelevement automatique impossible pour « ${groupe.nom} » : il manque ${
+                        Math.round(e.manque).toLocaleString('fr-FR')} FCFA. Rechargez avant l'echeance pour eviter l'amende.`,
+                    {
+                        type: 'alerte', lien: { ecran: 'Recharge' },
+                        cle: `prel-ko-${cycle.id}-${clientId}-${new Date().toISOString().slice(0, 10)}`
+                    });
+                return { preleve: false, montant: 0, raison: 'solde insuffisant', manque: e.manque };
+            }
+            if (e.code === 404 && /portefeuille/i.test(e.message || '')) {
+                await NotificationService.envoyer(clientId,
+                    `Prelevement impossible pour « ${groupe.nom} » : aucun portefeuille actif.`,
+                    { type: 'alerte', lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } } });
+                return { preleve: false, montant: 0, raison: 'aucun portefeuille' };
+            }
+            throw e;
         }
-
-        // Regle 1 : jamais de decouvert, et jamais de reglement partiel.
-        // Un prelevement a moitie laisserait la cotisation ouverte ET le
-        // portefeuille vide — le pire des deux mondes.
-        if (arrondir(portefeuille.solde) < besoin) {
-            const manque = arrondir(besoin - arrondir(portefeuille.solde));
-            await NotificationService.envoyer(clientId,
-                `Prelevement automatique impossible pour « ${groupe.nom} » : il manque ${
-                    Math.round(manque).toLocaleString('fr-FR')} FCFA. Rechargez avant l'echeance pour eviter l'amende.`,
-                { type: 'alerte', lien: { ecran: 'Recharge' } });
-            return { preleve: false, montant: 0, raison: 'solde insuffisant', manque };
-        }
-
-        // Regle 2 : les amendes d'abord, sinon la cotisation sera refusee.
-        for (const a of amendes) {
-            await AmendeService.payer(clientId, a.id);
-        }
-        await CycleService.cotiser(clientId, cycle.id, restant);
 
         await NotificationService.envoyer(clientId,
             totalAmendes > 0
@@ -218,7 +253,10 @@ class PrelevementService {
                     Math.round(totalAmendes).toLocaleString('fr-FR')} FCFA d'amendes.`
                 : `Cotisation de « ${groupe.nom} » reglee automatiquement : ${
                     Math.round(restant).toLocaleString('fr-FR')} FCFA.`,
-            { lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } } });
+            {
+                lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } },
+                cle: `prel-ok-${cycle.id}-${clientId}`
+            });
 
         return { preleve: true, montant: besoin, amendes: totalAmendes, cotisation: restant };
     }
@@ -251,12 +289,16 @@ class PrelevementService {
                 const etat = await this.etat(cotisation.clientId, cycle.groupeId).catch(() => null);
                 if (!etat || etat.couvert) continue;
 
-                await NotificationService.envoyer(cotisation.clientId,
+                const jour = new Date(maintenant).toISOString().slice(0, 10);
+                const envoye = await NotificationService.envoyer(cotisation.clientId,
                     `Il vous manquera ${Math.round(etat.manque).toLocaleString('fr-FR')} FCFA pour le prelevement de « ${
                         cycle.groupe.nom} ». Rechargez avant le ${
                         new Date(etat.datePrelevement).toLocaleDateString('fr-FR')}.`,
-                    { type: 'alerte', lien: { ecran: 'Recharge' } });
-                alertes++;
+                    {
+                        type: 'alerte', lien: { ecran: 'Recharge' },
+                        cle: `prov-${cycle.id}-${cotisation.clientId}-${jour}`
+                    });
+                if (envoye) alertes++;
             }
         }
         return { alertes };

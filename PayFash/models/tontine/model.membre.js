@@ -93,6 +93,15 @@ const TontineMembre = db.define("TontineMembre", {
         allowNull: false,
         defaultValue: 2,
         comment: "Delai avant echeance auquel le prelevement est tente"
+    },
+    motifExclusion: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Motif de l'exclusion. Il etait consigne dans une TontineAmende de 0 FCFA au statut 'annulee', qui polluait ensuite la liste des amendes du membre."
+    },
+    dateExclusion: {
+        type: DataTypes.DATE,
+        allowNull: true
     }
 }, {
     tableName: 'tontine_membres',

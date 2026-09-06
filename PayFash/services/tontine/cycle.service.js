@@ -9,7 +9,7 @@ const ENV = require('../../config/index');
 const EcheancierService = require('./echeancier.service');
 const {
     ErreurTontine, nombre, arrondir,
-    portefeuilleClient, caisseGroupe, ecrireTransaction, transferer
+    portefeuilleClient, caisseGroupe, ecrireTransaction, transferer, exigerGroupeActif
 } = require('./commun');
 
 class CycleService {
@@ -51,7 +51,16 @@ class CycleService {
      * `montant` est optionnel : par defaut on solde ce qui reste du.
      */
     static async cotiser(clientId, cycleId, montant) {
-        return db.transaction(async (t) => {
+        return db.transaction(async (t) => this.cotiserDans(clientId, cycleId, montant, t));
+    }
+
+    /**
+     * Corps de la cotisation, dans une transaction FOURNIE — pour que le
+     * mandat de prelevement puisse regler amendes et cotisation d'un seul
+     * bloc, et que rien ne soit paye si l'ensemble ne passe pas.
+     */
+    static async cotiserDans(clientId, cycleId, montant, t) {
+        {
             const cycle = await TontineCycle.findByPk(cycleId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!cycle) throw new ErreurTontine(404, 'Cycle introuvable');
             if (cycle.statut === 'complete') throw new ErreurTontine(409, 'Ce cycle est deja verse');
@@ -137,7 +146,7 @@ class CycleService {
                 cotisationsRestantes: restantes,
                 potComplet: restantes === 0
             };
-        });
+        }
     }
 
     /** Transforme une violation d'unicite de reference en 409 lisible. */
@@ -225,6 +234,7 @@ class CycleService {
 
             const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+            exigerGroupeActif(groupe, 'le versement du pot');
 
             // --- Autorisation -------------------------------------------
             if (!acteur.systeme) {
@@ -320,7 +330,15 @@ class CycleService {
             let partDecote = 0;
             let cotisants = [];
             if (decote > 0) {
-                cotisants = await TontineCotisation.findAll({ where: { cycleId: cycle.id }, transaction: t });
+                // Seuls ceux qui ont REELLEMENT paye partagent la decote :
+                // c'est le rendement de leur patience, pas une distribution a
+                // la cantonade. La requete portait sur toutes les lignes du
+                // cycle, si bien qu'un membre defaillant — ou toutes les
+                // cotisations constatees impayees lors d'un versement force —
+                // touchait sa part comme les autres.
+                cotisants = await TontineCotisation.findAll({
+                    where: { cycleId: cycle.id, statut: 'payee' }, transaction: t
+                });
                 partDecote = cotisants.length ? Math.floor(decote / cotisants.length) : 0;
             }
             const totalRedistribue = arrondir(partDecote * cotisants.length);

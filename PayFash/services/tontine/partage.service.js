@@ -8,7 +8,7 @@ const {
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, portefeuilleEpargne,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
 const { EpargneService } = require('./epargne.service');
 
@@ -124,6 +124,9 @@ class PartageService {
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+            // Un groupe termine cloture au contraire son dernier exercice :
+            // seul le gel administratif suspend la casse.
+            exigerGroupeNonGele(groupe, "la cloture de l'exercice");
 
             if (!acteur.systeme) {
                 await exigerRole(groupeId, acteur.clientId, ['president', 'tresorier'], t,
@@ -213,8 +216,19 @@ class PartageService {
                 totalDistribue: calcul.soldeCaisse,
                 apportsRendus: calcul.totalApports,
                 produitPartage: calcul.produit,
-                detail
+                detail,
+                groupeNotif: groupe
             };
+        }).then(async (r) => {
+            // Chacun recoit sa part : chacun doit l'apprendre, avec le detail
+            // qui la justifie. La notification existait sans appelant.
+            try {
+                const NotificationService = require('./notification.service');
+                await NotificationService.exerciceCloture(r.groupeNotif, r.detail);
+            } catch (e) {
+                console.log('[tontine] notification de casse non envoyee :', e.message);
+            }
+            return r;
         });
     }
 

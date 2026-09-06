@@ -5,7 +5,7 @@ const {
     db, Client,
     TontineGroupe, TontineMembre, TontineCycle, TontineCotisation, TontineEnchere
 } = require('../../models');
-const { ErreurTontine, nombre, arrondir, exigerRole } = require('./commun');
+const { ErreurTontine, nombre, arrondir, exigerRole, exigerGroupeActif } = require('./commun');
 
 // =====================================================================
 //  L'enchere sur le pot.
@@ -43,6 +43,14 @@ class EnchereService {
         return cycle;
     }
 
+    /**
+     * Ouvre la fenetre d'offres, et l'ECRIT.
+     *
+     * Cette methode ne persistait rien : la date limite qu'elle renvoyait
+     * n'existait nulle part, `offrir` ne verifiait aucune ouverture et
+     * `adjuger` pouvait tomber n'importe quand. Une enchere sans fenetre
+     * n'est pas une enchere.
+     */
     static async ouvrir(acteur, cycleId, dateLimite) {
         return db.transaction(async (t) => {
             const cycle = await this._cycleOuvrable(cycleId, t);
@@ -51,7 +59,16 @@ class EnchereService {
             if (groupe.modeOrdre !== 'enchere') {
                 throw new ErreurTontine(409, `Ce groupe attribue les tours par "${groupe.modeOrdre}", pas par enchere`);
             }
-            await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'ouvrir une enchere');
+            exigerGroupeActif(groupe, "l'ouverture d'une enchere");
+            if (!acteur.systeme) {
+                await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'ouvrir une enchere');
+            }
+
+            const limite = dateLimite ? new Date(dateLimite) : new Date(Date.now() + 24 * 3600 * 1000);
+            if (!(limite > new Date())) {
+                throw new ErreurTontine(400, 'La date limite doit etre dans le futur');
+            }
+            await cycle.update({ enchereOuverteJusqu: limite }, { transaction: t });
 
             const ouvertes = await TontineEnchere.count({
                 where: { cycleId, statut: 'active' }, transaction: t
@@ -59,10 +76,15 @@ class EnchereService {
             return {
                 cycle,
                 offresActives: ouvertes,
-                dateLimite: dateLimite ? new Date(dateLimite) : new Date(Date.now() + 24 * 3600 * 1000),
-                message: 'Enchere ouverte : les membres non encore servis peuvent proposer une decote.'
+                dateLimite: limite,
+                message: `Enchere ouverte jusqu'au ${limite.toLocaleString('fr-FR')} : les membres non encore servis peuvent proposer une decote.`
             };
         });
+    }
+
+    /** La fenetre d'offres est-elle ouverte sur ce cycle ? */
+    static _fenetreOuverte(cycle) {
+        return !!cycle.enchereOuverteJusqu && new Date(cycle.enchereOuverteJusqu) > new Date();
     }
 
     /**
@@ -79,6 +101,12 @@ class EnchereService {
             const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t });
             if (groupe.modeOrdre !== 'enchere') {
                 throw new ErreurTontine(409, 'Ce groupe ne fonctionne pas aux encheres');
+            }
+
+            if (!this._fenetreOuverte(cycle)) {
+                throw new ErreurTontine(409, cycle.enchereOuverteJusqu
+                    ? "Les offres sont closes sur ce cycle"
+                    : "Aucune enchere n'est ouverte sur ce cycle");
             }
 
             const membre = await TontineMembre.findOne({
@@ -157,6 +185,10 @@ class EnchereService {
                 await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'adjuger une enchere');
             }
 
+            if (!cycle.enchereOuverteJusqu) {
+                throw new ErreurTontine(409, "Aucune enchere n'a ete ouverte sur ce cycle");
+            }
+
             const actives = await TontineEnchere.findAll({
                 where: { cycleId, statut: 'active' },
                 order: [['montantDecote', 'DESC'], ['dateOffre', 'ASC']],
@@ -171,7 +203,12 @@ class EnchereService {
             }
 
             const ancienBeneficiaire = cycle.beneficiaireId;
-            await cycle.update({ beneficiaireId: gagnante.clientId }, { transaction: t });
+            // L'adjudication ferme la fenetre : plus aucune offre ne peut
+            // arriver apres que le pot a change de main.
+            await cycle.update({
+                beneficiaireId: gagnante.clientId,
+                enchereOuverteJusqu: null
+            }, { transaction: t });
 
             // Le beneficiaire ayant change, la liste des cotisants change aussi.
             await TontineCotisation.destroy({ where: { cycleId }, transaction: t });
@@ -189,6 +226,40 @@ class EnchereService {
                 offresPerdantes: actives.length - 1
             };
         });
+    }
+
+    /**
+     * Cron : adjuge les encheres dont la fenetre est fermee.
+     *
+     * Sans elle, une fenetre expirait et rien ne se passait : le pot restait
+     * au beneficiaire d'origine et les offres deposees ne servaient a rien.
+     * Une enchere sans offre est simplement refermee — le tour suit alors
+     * l'ordre normal.
+     */
+    static async traiterEncheresEchues(maintenant = new Date()) {
+        const echus = await TontineCycle.findAll({
+            where: {
+                statut: 'actif',
+                enchereOuverteJusqu: { [Op.ne]: null, [Op.lte]: maintenant }
+            }
+        });
+
+        const rapport = { examines: echus.length, adjugees: 0, sansOffre: 0, erreurs: [] };
+        for (const cycle of echus) {
+            try {
+                const actives = await TontineEnchere.count({ where: { cycleId: cycle.id, statut: 'active' } });
+                if (!actives) {
+                    await cycle.update({ enchereOuverteJusqu: null });
+                    rapport.sansOffre++;
+                    continue;
+                }
+                await this.adjuger({ systeme: true }, cycle.id);
+                rapport.adjugees++;
+            } catch (e) {
+                rapport.erreurs.push({ cycleId: cycle.id, message: e.message });
+            }
+        }
+        return rapport;
     }
 
     /** L'offre gagnante d'un cycle, si elle existe. Lue au versement. */

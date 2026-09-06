@@ -7,7 +7,7 @@ const {
 const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, caisseGroupe, portefeuilleCaution,
-    exigerRole, ecrireTransaction, transferer
+    exigerRole, exigerGroupeActif, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
 
 // =====================================================================
@@ -38,6 +38,7 @@ class CautionService {
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+            exigerGroupeActif(groupe, "le blocage d'une caution");
 
             const membre = await TontineMembre.findOne({
                 where: { groupeId, clientId }, transaction: t, lock: t.LOCK.UPDATE
@@ -114,6 +115,7 @@ class CautionService {
 
             const cycle = await TontineCycle.findByPk(cotisation.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
             const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            exigerGroupeNonGele(groupe, "la saisie d'une caution");
 
             if (!acteur.systeme) {
                 await exigerRole(groupe.id, acteur.clientId, ['president', 'tresorier'], t,
@@ -198,6 +200,9 @@ class CautionService {
             if (caution.statut === 'liberee') throw new ErreurTontine(409, 'Cette caution est deja liberee');
 
             const groupe = await TontineGroupe.findByPk(caution.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            // Un groupe termine libere au contraire ses cautions : seul le gel
+            // administratif bloque la restitution.
+            exigerGroupeNonGele(groupe, "la restitution d'une caution");
             if (!acteur.systeme) {
                 await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'liberer une caution');
             }
