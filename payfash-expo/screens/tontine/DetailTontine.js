@@ -315,6 +315,11 @@ export default function DetailTontine() {
           items={[
             { icone: 'account-group', label: 'Membres et tours', ecran: 'MembresTontine' },
             ...(cycleEnCours ? [{ icone: 'cash-multiple', label: 'Cotisations du cycle', ecran: 'CotisationsCycle', params: { cycleId: cycleEnCours.id } }] : []),
+            // Le mode « enchere » etait proposé à la création sans qu'aucun
+            // écran ne permette d'enchérir.
+            ...(cycleEnCours && groupe.modeOrdre === 'enchere'
+              ? [{ icone: 'gavel', label: 'Enchère sur le pot', ecran: 'EncheresTontine', params: { cycleId: cycleEnCours.id, monRole } }]
+              : []),
             { icone: 'gavel', label: 'Votes et decisions', ecran: 'VotesTontine' },
             { icone: 'swap-horizontal', label: 'Echanges de tours', ecran: 'EchangeTour' },
             { icone: 'alert-octagon', label: 'Mes amendes', ecran: 'MesAmendes' },

@@ -47,6 +47,7 @@ import Cotiser from './screens/tontine/Cotiser';
 import MesAmendes from './screens/tontine/MesAmendes';
 import VotesTontine from './screens/tontine/VotesTontine';
 import EchangeTour from './screens/tontine/EchangeTour';
+import EncheresTontine from './screens/tontine/EncheresTontine';
 import CaisseEpargne from './screens/tontine/CaisseEpargne';
 import DemanderCredit from './screens/tontine/DemanderCredit';
 import RemboursementCredit from './screens/tontine/RemboursementCredit';
@@ -111,6 +112,7 @@ export default function Stack(){
                 <stack.Screen name='MesAmendes' component={MesAmendes} />
                 <stack.Screen name='VotesTontine' component={VotesTontine} />
                 <stack.Screen name='EchangeTour' component={EchangeTour} />
+                <stack.Screen name='EncheresTontine' component={EncheresTontine} />
                 <stack.Screen name='CaisseEpargne' component={CaisseEpargne} />
                 <stack.Screen name='DemanderCredit' component={DemanderCredit} />
                 <stack.Screen name='RemboursementCredit' component={RemboursementCredit} />

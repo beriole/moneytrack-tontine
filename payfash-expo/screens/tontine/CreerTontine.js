@@ -46,6 +46,7 @@ export default function CreerTontine() {
   const [montant, setMontant] = useState('');
   const [membresMax, setMembresMax] = useState('');
   const [caution, setCaution] = useState('10');
+  const [cautionObligatoire, setCautionObligatoire] = useState(false);
   const [type, setType] = useState('rotative');
   const [frequence, setFrequence] = useState('mensuelle');
   const [modeOrdre, setModeOrdre] = useState('tirage');
@@ -72,6 +73,7 @@ export default function CreerTontine() {
         membresMax: nb,
         modeOrdre,
         pourcentageCaution: parseFloat(caution) || 0,
+        cautionObligatoire,
       });
       await rafraichir();
       navigation.replace('SuccesTontine', {
@@ -156,6 +158,28 @@ export default function CreerTontine() {
           placeholder="10"
           placeholderTextColor={colors.textMuted}
         />
+
+        {/* La caution était configurable mais jamais exigée : la cascade de
+            recours caution -> garant pouvait être vide dès le départ. */}
+        <TouchableOpacity
+          onPress={() => setCautionObligatoire(!cautionObligatoire)}
+          activeOpacity={0.8}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}
+        >
+          <AntDesign
+            name={cautionObligatoire ? 'checksquare' : 'checksquareo'}
+            size={20}
+            color={cautionObligatoire ? colors.accent : colors.textMuted}
+          />
+          <Text style={{ color: colors.white, marginLeft: 10, flex: 1, fontSize: 14 }}>
+            Exiger la caution avant le démarrage
+          </Text>
+        </TouchableOpacity>
+        <Text style={s.aide}>
+          {cautionObligatoire
+            ? "La tontine refusera de démarrer tant qu'un membre actif n'aura pas déposé sa caution."
+            : "La caution reste facultative : chacun peut la déposer, personne n'y est tenu."}
+        </Text>
 
         {potEstime > 0 && (
           <View style={{ marginTop: 18 }}>

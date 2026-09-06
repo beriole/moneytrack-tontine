@@ -105,6 +105,22 @@ export const accepterEchange = (id) => api.post(`/tontine/echanges/${id}/accepte
 export const refuserEchange = (id) => api.post(`/tontine/echanges/${id}/refuser`);
 export const annulerEchange = (id) => api.post(`/tontine/echanges/${id}/annuler`);
 
+// ---------------------------------------------------------------
+//  Encheres sur le pot
+//
+//  Le backend les servait depuis le debut, mais aucun ecran ne les
+//  appelait : la creation de tontine proposait pourtant « Enchere » comme
+//  mode d'attribution des tours. Le mode existait, la mecanique aussi,
+//  et les membres n'avaient aucun moyen d'encherir.
+// ---------------------------------------------------------------
+export const offresEnchere = (cycleId) => api.get(`/tontine/cycles/${cycleId}/enchere`);
+export const ouvrirEnchere = (cycleId, dateLimite) =>
+  api.post(`/tontine/cycles/${cycleId}/enchere/ouvrir`, dateLimite ? { dateLimite } : {});
+export const offrirEnchere = (cycleId, montantDecote) =>
+  api.post(`/tontine/cycles/${cycleId}/enchere/offrir`, { montantDecote });
+export const adjugerEnchere = (cycleId) => api.post(`/tontine/cycles/${cycleId}/enchere/adjuger`);
+export const retirerEnchere = (enchereId) => api.post(`/tontine/encheres/${enchereId}/retirer`);
+
 export const reglementCourant = (groupeId) => api.get(`/tontine/groupes/${groupeId}/reglement`);
 export const genererReglement = (groupeId, contenu) => api.post(`/tontine/groupes/${groupeId}/reglement`, { contenu });
 export const signerReglement = (contratId) => api.post(`/tontine/reglements/${contratId}/signer`);

@@ -44,6 +44,11 @@ export const statutCouleur = {
   decaissee: colors.accent,
   remboursee: colors.success,
   rejetee: colors.danger,
+  // Encheres
+  active: colors.accent,
+  gagnante: colors.success,
+  perdante: colors.textMuted,
+  retiree: colors.textMuted,
 };
 
 export const libelleStatut = {
@@ -69,6 +74,10 @@ export const libelleStatut = {
   decaissee: 'Decaisse',
   remboursee: 'Rembourse',
   rejetee: 'Rejete',
+  active: 'En lice',
+  gagnante: 'Gagnante',
+  perdante: 'Perdante',
+  retiree: 'Retiree',
 };
 
 export default StyleSheet.create({
