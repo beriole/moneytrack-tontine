@@ -82,6 +82,14 @@ const ENV = {
     // Montant minimal impose par Fapshi.
     PAIEMENT_MONTANT_MIN: parseInt(process.env.PAIEMENT_MONTANT_MIN || '100', 10),
 
+    // ---- Assistant IA (Groq) ----
+    // La cle vit ICI, cote serveur. L'application mobile l'embarquait dans
+    // son bundle via EXPO_PUBLIC_GROQ_API_KEY : extractible par quiconque
+    // installe l'application.
+    GROQ_API_KEY: process.env.GROQ_API_KEY || null,
+    GROQ_MODEL: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    GROQ_BASE_URL: process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1',
+
     // Part retenue sur une recharge, en fraction (0.02 = 2 %).
     //
     // Fapshi prend une commission sur chaque collecte, mais l'application

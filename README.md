@@ -17,6 +17,14 @@ avec un module de **tontine camerounaise (njangi)** intégré au reste des compt
 Portefeuilles (courant / épargne / projet), transferts, dépenses, budgets, projets,
 épargne, marketplace de plans, prêts, assistant IA (Groq).
 
+L'assistant passe par le backend (`POST /ai/chat`) : la clé Groq reste sur le
+serveur, dans `GROQ_API_KEY`. Elle était auparavant embarquée dans le bundle
+mobile via `EXPO_PUBLIC_GROQ_API_KEY` — extractible par quiconque installe
+l'application. L'instruction système est posée côté serveur et l'historique
+plafonné : sans cela, un compte suffisait à obtenir un LLM généraliste aux
+frais du projet. L'ancien appel direct reste accessible avec
+`EXPO_PUBLIC_GROQ_DIRECT=1`, en connaissance de cause.
+
 ### Tontine (njangi)
 Le module reprend trois des quatre caisses d'une tontine camerounaise. La caisse de
 solidarité (caisse 3) est hors périmètre.
@@ -92,7 +100,7 @@ npx sequelize-cli db:migrate    # 11 migrations, toutes idempotentes
 ```bash
 cd payfash-expo
 npm install
-cp .env.example .env            # EXPO_PUBLIC_API_URL et EXPO_PUBLIC_GROQ_API_KEY
+cp .env.example .env            # renseigner EXPO_PUBLIC_API_URL
 npx expo start                  # scanner le QR avec Expo Go (SDK 54)
 ```
 

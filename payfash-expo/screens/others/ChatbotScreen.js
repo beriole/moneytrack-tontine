@@ -45,9 +45,11 @@ export default function ChatbotScreen() {
     historyRef.current.push({ role: "user", content: text });
     setInput("");
 
-    if (!isGroqConfigured()) {
+    // La clé vit maintenant sur le serveur : savoir si l'assistant répond
+    // demande de le lui demander, donc un await.
+    if (!(await isGroqConfigured())) {
       simulateBotResponse(
-        "⚠️ La clé Groq n'est pas configurée. Ajoute EXPO_PUBLIC_GROQ_API_KEY dans le fichier .env puis relance l'application."
+        "⚠️ L'assistant n'est pas disponible : la clé Groq n'est pas configurée sur le serveur (GROQ_API_KEY)."
       );
       return;
     }
@@ -59,10 +61,12 @@ export default function ChatbotScreen() {
       setLoading(false);
       simulateBotResponse(reply);
     } catch (err) {
-      console.log("Erreur Groq :", err.message);
+      console.log("Erreur assistant :", err.message);
       setLoading(false);
+      // Le backend renvoie déjà un message lisible — surcharge, délai
+      // dépassé — plutôt qu'un texte générique qui n'aide personne.
       simulateBotResponse(
-        "Désolé, je n'ai pas pu répondre pour le moment. Réessaie dans un instant."
+        err?.message || "Désolé, je n'ai pas pu répondre pour le moment. Réessaie dans un instant."
       );
     }
   };
