@@ -84,9 +84,20 @@ const inscription = async (req, res) => {
     const sel = await bcrypt.genSalt(10);
     const hache = await bcrypt.hash(motDePasse, sel);
 
+    // Le numero est stocke en chiffres seulement, comme partout ailleurs
+    // dans le projet : sans cela, « 6 70 00 00 00 » et « 670000000 »
+    // designeraient deux comptes differents malgre la contrainte d'unicite.
+    const numero = String(telephone || '').replace(/\D/g, '');
+    if (numero.length < 9) {
+      return res.status(400).json({ message: "Numero de telephone invalide" });
+    }
+
     // Création du compte utilisateur
-    const nouveauClient = await Client.create({ 
-      nom, email, motDePasse: hache, telephone, addresse, dateInscription 
+    const nouveauClient = await Client.create({
+      nom, email, motDePasse: hache,
+      telephone: numero,
+      addresse: addresse ? String(addresse).trim().slice(0, 255) : null,
+      dateInscription
     });
 
     // Le code de verification est envoye APRES la creation, et son echec ne
@@ -191,7 +202,7 @@ const recuperation=async (req,res)=> {
 // Champs qu'un client peut lire et modifier sur son propre compte. Le mot de
 // passe n'en fait pas partie (il passe par /auth/reset), isVerified et
 // isActive non plus : un utilisateur ne se declare pas verifie lui-meme.
-const CHAMPS_PROFIL = ['id', 'nom', 'email', 'telephone', 'isActive', 'isVerified', 'dateInscription'];
+const CHAMPS_PROFIL = ['id', 'nom', 'email', 'telephone', 'addresse', 'isActive', 'isVerified', 'dateInscription'];
 
 // GET /auth/info/:id
 //
@@ -211,14 +222,14 @@ const profil = async (req, res) => {
   }
 };
 
-// PATCH /auth/info/:id   body: { nom?, email?, telephone? }
+// PATCH /auth/info/:id   body: { nom?, email?, telephone?, addresse? }
 //
 // Repondait "profil modifie avec succes" sans rien ecrire.
 const modifierprofil = async (req, res) => {
   try {
     if (!memeClient(req, res, req.params.id)) return;
 
-    const { nom, email, telephone } = req.body;
+    const { nom, email, telephone, addresse } = req.body;
     const modifs = {};
 
     if (nom !== undefined) {
@@ -237,9 +248,12 @@ const modifierprofil = async (req, res) => {
       if (chiffres.length < 9) return res.status(400).json({ error: "Numero de telephone invalide" });
       modifs.telephone = chiffres;
     }
+    if (addresse !== undefined) {
+      modifs.addresse = String(addresse).trim().slice(0, 255) || null;
+    }
 
     if (!Object.keys(modifs).length) {
-      return res.status(400).json({ error: "Aucun champ modifiable fourni (nom, email, telephone)" });
+      return res.status(400).json({ error: "Aucun champ modifiable fourni (nom, email, telephone, addresse)" });
     }
 
     await Client.update(modifs, { where: { id: req.user.id } });
