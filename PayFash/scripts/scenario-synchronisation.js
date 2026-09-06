@@ -160,6 +160,17 @@ const acteur = (id) => ({ clientId: id });
         verifier('le solde brut seul aurait surestime la marge',
             solde.engage30j >= 0 && solde.disponible <= solde.brut);
 
+        // Le retrait ne debite que le compte de reglement : `disponible`,
+        // calcule sur la somme de TOUS les portefeuilles, promettait de
+        // l'argent dormant sur une epargne. C'est `retirable` que le serveur
+        // oppose a /paiement/retrait.
+        console.log('  solde de reglement ' + solde.soldeReglement
+            + '  |  retirable ' + solde.retirable);
+        verifier('retirable = solde de reglement - engage a 30 jours (jamais negatif)',
+            solde.retirable === arrondir(Math.max(0, solde.soldeReglement - solde.engage30j)));
+        verifier('le retirable ne depasse jamais le compte reellement debite',
+            solde.retirable <= solde.soldeReglement && solde.soldeReglement <= solde.brut);
+
         // =============================================================
         titre('5. Le tour est dirige vers le projet');
         const dest = await IntegrationService.destinationsPossibles(awa.id, groupe.id);
