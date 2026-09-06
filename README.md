@@ -84,7 +84,7 @@ vierge, elles échouent. Sur une base neuve, `npm start` suffit. Sur une base
 déjà en service, arrêtez le serveur, sauvegardez, puis :
 
 ```bash
-npx sequelize-cli db:migrate    # 10 migrations, toutes idempotentes
+npx sequelize-cli db:migrate    # 11 migrations, toutes idempotentes
 ```
 
 ### Application mobile
