@@ -200,6 +200,62 @@ async function doitEchouer(libelle, code, fn) {
         verifier('aucun de ces refus n a touche au solde',
             arrondir((await Portefeuille.findByPk(pf.id)).solde) === soldeApres);
 
+        // =============================================================
+        //  Le point le plus dangereux de toute l'integration : que faire
+        //  quand on ne SAIT PAS si le versement est parti.
+        // =============================================================
+        titre('8 bis. Un refus certain rembourse, une issue inconnue non');
+
+        const { ErreurFapshi } = require('../services/paiement/fapshi.service');
+        const vraiVerser = FapshiService.verser;
+        const soldeAvantEssais = arrondir((await Portefeuille.findByPk(pf.id)).solde);
+
+        // 1. Refus explicite du fournisseur (4xx) : rien n'a bouge chez lui,
+        //    l'argent revient.
+        FapshiService.verser = async () => {
+            throw new ErreurFapshi(400, 'compte marchand insuffisant', null, true);
+        };
+        await doitEchouer('un refus certain remonte en 502', 502,
+            () => PaiementService.initierRetrait(client.id, { montant: MONTANT, telephone: '670000000' }));
+        verifier('et le solde est integralement restitue',
+            arrondir((await Portefeuille.findByPk(pf.id)).solde) === soldeAvantEssais,
+            'solde ' + arrondir((await Portefeuille.findByPk(pf.id)).solde));
+        const rembourse = await Paiement.findOne({
+            where: { user_id: client.id, sens: 'sortant' }, order: [['id', 'DESC']]
+        });
+        referencesCreees.push(rembourse.reference);
+        verifier('le paiement est marque rembourse', rembourse.status === 'REFUNDED');
+
+        // 2. Issue INCONNUE (coupure reseau) : Fapshi a peut-etre execute le
+        //    versement. Recrediter ferait sortir l'argent deux fois.
+        FapshiService.verser = async () => {
+            throw new ErreurFapshi(502, 'Fapshi injoignable : ECONNRESET', null, false);
+        };
+        const incertain = await PaiementService.initierRetrait(
+            client.id, { montant: MONTANT, telephone: '670000000' });
+        referencesCreees.push(incertain.reference);
+        FapshiService.verser = vraiVerser;
+
+        verifier('une issue inconnue ne leve pas : elle rend un statut a verifier',
+            incertain.aVerifier === true && incertain.statut === 'A_VERIFIER');
+        verifier('les fonds RESTENT reserves — pas de double sortie',
+            arrondir((await Portefeuille.findByPk(pf.id)).solde) === arrondir(soldeAvantEssais - MONTANT),
+            'attendu ' + arrondir(soldeAvantEssais - MONTANT));
+        const aVerifier = await Paiement.findOne({ where: { reference: incertain.reference } });
+        verifier('le paiement porte le statut A_VERIFIER', aVerifier.status === 'A_VERIFIER');
+        verifier('il est remonte pour traitement manuel',
+            (await PaiementService.paiementsAVerifier()).some(x => x.reference === incertain.reference));
+
+        const sonde = await PaiementService.confirmer(incertain.reference);
+        verifier('le sondage repond sans rien creer ni crediter',
+            sonde.statut === 'A_VERIFIER' && sonde.creedite === false
+            && arrondir((await Portefeuille.findByPk(pf.id)).solde) === arrondir(soldeAvantEssais - MONTANT));
+
+        // On rend la mise a l'ecart pour ne pas fausser le bilan final.
+        await PaiementService._rembourser(aVerifier, 'Fin de recette');
+        verifier('la restitution manuelle ramene le solde',
+            arrondir((await Portefeuille.findByPk(pf.id)).solde) === soldeAvantEssais);
+
         titre('9. Normalisation des numeros');
         verifier('l indicatif 237 est retire',
             FapshiService.normaliserTelephone('237670000000') === '670000000');
