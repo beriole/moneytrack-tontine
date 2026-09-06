@@ -8,6 +8,11 @@ dotenv.config({ override: true });
 // TOCKEN, longtemps declaree et documentee, n'etait lue par aucun code.
 const ENV = {
     DATABASE: process.env.DATABASE,
+    // Hote de la BASE DE DONNEES. Il se lisait dans HOSTNAME, que Windows
+    // definit deja comme le nom de la machine — d'ou le override:true
+    // ci-dessus, un correctif pour un nom mal choisi. DB_HOST dit ce qu'il
+    // est ; HOSTNAME reste en repli pour les .env deja en service.
+    DBHOST: process.env.DB_HOST || process.env.HOSTNAME || '127.0.0.1',
     HOSTNAME: process.env.HOSTNAME,
     DBUSER: process.env.DBUSER,
     DBPASSWORD: process.env.DBPASSWORD,
@@ -66,7 +71,16 @@ const ENV = {
     APP_URL: process.env.APP_URL || null,
 
     // Montant minimal impose par Fapshi.
-    PAIEMENT_MONTANT_MIN: parseInt(process.env.PAIEMENT_MONTANT_MIN || '100', 10)
+    PAIEMENT_MONTANT_MIN: parseInt(process.env.PAIEMENT_MONTANT_MIN || '100', 10),
+
+    // Part retenue sur une recharge, en fraction (0.02 = 2 %).
+    //
+    // Fapshi prend une commission sur chaque collecte, mais l'application
+    // credite le montant nominal : le compte marchand se vide donc de cette
+    // commission, sans aucune ecriture en face. Laisser 0 conserve ce
+    // comportement — la plateforme absorbe. Une valeur > 0 la repercute sur
+    // l'utilisateur et l'inscrit comme frais, ou elle devient enfin visible.
+    PAIEMENT_COMMISSION_RECHARGE: parseFloat(process.env.PAIEMENT_COMMISSION_RECHARGE || '0')
 }
 
 module.exports = ENV;

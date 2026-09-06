@@ -7,7 +7,7 @@ const base = {
     database: ENV.DATABASE,
     username: ENV.DBUSER,
     password: ENV.DBPASSWORD,
-    host: ENV.HOSTNAME,
+    host: ENV.DBHOST,
     port: ENV.DBPORT,
     dialect: ENV.DIALECT || 'mysql',
     logging: console.log

@@ -55,6 +55,26 @@ class PaiementService {
     }
 
     /**
+     * Un compte non verifie ne fait pas entrer ni sortir d'argent reel.
+     *
+     * La verification par code OTP existait — /auth/sendOtp, /auth/verifyOtp,
+     * la colonne isVerified — mais rien ne la lisait jamais : ni la connexion,
+     * ni les paiements. Elle etait purement decorative. Elle est opposee ici,
+     * et seulement ici : bloquer la connexion mettrait dehors les comptes
+     * existants, alors que le Mobile Money est precisement l'endroit ou
+     * l'identite compte.
+     */
+    static _exigerCompteVerifie(client) {
+        if (!client.isVerified) {
+            throw new ErreurPaiement(403,
+                "Verifiez votre adresse email avant d'operer un paiement : demandez un code depuis votre profil.");
+        }
+        if (client.isActive === false) {
+            throw new ErreurPaiement(403, 'Ce compte est desactive');
+        }
+    }
+
+    /**
      * Ce que le client doit sortir dans les 30 jours.
      *
      * Charge paresseusement le module tontine : le noyau des paiements ne
@@ -93,6 +113,7 @@ class PaiementService {
 
         const client = await Client.findByPk(clientId);
         if (!client) throw new ErreurPaiement(404, 'Client introuvable');
+        this._exigerCompteVerifie(client);
         const portefeuille = await this._portefeuille(clientId, portefeuilleId, null);
 
         const reference = this._reference('RCH');
@@ -248,7 +269,16 @@ class PaiementService {
             });
             if (!portefeuille) throw new ErreurPaiement(404, 'Portefeuille introuvable');
 
-            const somme = arrondir(frais.montant);
+            const brut = arrondir(frais.montant);
+            // Commission de collecte. A 0 — le defaut — le comportement est
+            // inchange : le montant nominal est credite et la plateforme
+            // absorbe ce que prend l'agregateur. Au-dela, la retenue est
+            // portee sur l'ecriture au lieu de disparaitre du compte marchand
+            // sans contrepartie comptable.
+            const taux = nombre(ENV.PAIEMENT_COMMISSION_RECHARGE);
+            const commission = taux > 0 ? Math.floor(brut * taux) : 0;
+            const somme = arrondir(brut - commission);
+
             await portefeuille.update({ solde: arrondir(nombre(portefeuille.solde) + somme) }, { transaction: t });
 
             // La reference unique est la seconde barriere : meme si le
@@ -258,8 +288,10 @@ class PaiementService {
                 date: new Date(),
                 type: 'recharge',
                 statut: 'Succès',
-                description: `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference}`,
-                frais: 0,
+                description: commission > 0
+                    ? `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference} (${brut} moins ${commission} de frais)`
+                    : `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference}`,
+                frais: commission,
                 ClientTransactionId: frais.user_id,
                 reference: frais.reference
             }, { transaction: t });
@@ -276,6 +308,8 @@ class PaiementService {
                 statut: 'SUCCESSFUL',
                 creedite: true,
                 montant: somme,
+                montantPaye: brut,
+                commission,
                 soldeApres: arrondir(portefeuille.solde),
                 transactionId: ecriture.id
             };
@@ -299,6 +333,7 @@ class PaiementService {
 
         const client = await Client.findByPk(clientId);
         if (!client) throw new ErreurPaiement(404, 'Client introuvable');
+        this._exigerCompteVerifie(client);
         const numero = FapshiService.normaliserTelephone(telephone || client.telephone);
         if (numero.length < 9) throw new ErreurPaiement(400, 'Numero de telephone invalide');
 

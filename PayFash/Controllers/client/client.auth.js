@@ -13,6 +13,62 @@ const ENV=require('../../config/index');
 const { error } = require('console');
 const Litige=require('../../models/model.litige');
 const portefeuille=require('../../models/model.portefeuile')
+// =====================================================================
+//  Envoi d'e-mails.
+//
+//  Les deux transports du fichier lisaient ENV.EMAIL / ENV.PASSEMAIL, soit
+//  process.env.EMAIL et PASS_EMAIL — deux variables que le .env.example ne
+//  declare pas. Le gabarit fournit SMTP_HOST, SMTP_PORT, EMAIL_USER et
+//  EMAIL_PASSWORD : avec lui, l'envoi echouait systematiquement. On lit
+//  desormais les variables documentees, en gardant les anciennes en repli
+//  pour ne pas casser un .env deja en service.
+// =====================================================================
+const utilisateurSMTP = () => ENV.EMAIL_USER || ENV.EMAIL;
+const motDePasseSMTP = () => ENV.EMAIL_PASSWORD || ENV.PASSEMAIL;
+
+const smtpConfigure = () => !!(utilisateurSMTP() && motDePasseSMTP());
+
+function transportMail() {
+    const commun = { auth: { user: utilisateurSMTP(), pass: motDePasseSMTP() } };
+    // Un hote explicite prime : le gabarit permet autre chose que Gmail.
+    if (ENV.SMTP_HOST) {
+        return nodemailler.createTransport({
+            host: ENV.SMTP_HOST,
+            port: parseInt(ENV.SMTP_PORT, 10) || 587,
+            secure: parseInt(ENV.SMTP_PORT, 10) === 465,
+            ...commun
+        });
+    }
+    return nodemailler.createTransport({ service: 'gmail', ...commun });
+}
+
+/** Cree un code OTP et tente de l'envoyer. Ne leve pas : renvoie le sort. */
+async function envoyerOtp(email) {
+    const codeOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    await Otp.create({
+        OtpCode: codeOtp,
+        email,
+        dateExpiration: new Date(Date.now() + 5 * 60 * 1000)
+    });
+
+    if (!smtpConfigure()) {
+        console.warn('[auth] SMTP non configure : code OTP non envoye a', email);
+        return { envoye: false, motif: 'SMTP non configure' };
+    }
+    try {
+        await transportMail().sendMail({
+            from: utilisateurSMTP(),
+            to: email,
+            subject: 'Code de verification de compte',
+            text: `Votre code de verification est : ${codeOtp}. Il expire dans 5 minutes.`
+        });
+        return { envoye: true };
+    } catch (e) {
+        console.error('[auth] envoi OTP impossible :', e.message);
+        return { envoye: false, motif: e.message };
+    }
+}
+
 const inscription = async (req, res) => {
   console.log("Requête inscription reçue :", req.body);
   const { nom, email, motDePasse, telephone, addresse, dateInscription } = req.body;
@@ -33,30 +89,12 @@ const inscription = async (req, res) => {
       nom, email, motDePasse: hache, telephone, addresse, dateInscription 
     });
 
-    // Génération du code OTP
-    const codeOtp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Envoi du mail
-    const transport = nodemailler.createTransport({
-      service: "gmail",
-      auth: {
-        user: ENV.EMAIL,
-        pass: ENV.PASSEMAIL
-      }
-    });
-
-    const optionEnvoie = {
-      from: ENV.EMAIL,
-      to: email,
-      subject: "Code de vérification de compte",
-      text: "Merci de rejoindre notre plateforme. Votre code de vérification est : " + codeOtp
-    };
-
-    await transport.sendMail(optionEnvoie);
-
-    // Stocker l'OTP avec expiration (5 minutes)
-    const dateExpiration = new Date(Date.now() + 5 * 60 * 1000);
-    await Otp.create({ OtpCode: codeOtp, email, dateExpiration });
+    // Le code de verification est envoye APRES la creation, et son echec ne
+    // fait pas echouer l'inscription. Auparavant, un sendMail en erreur
+    // remontait en 500 alors que le compte etait deja en base : l'utilisateur
+    // croyait son inscription ratee, sans jeton, et ne pouvait pas
+    // recommencer — son email etait desormais « deja pris ».
+    const otp = await envoyerOtp(email);
 
     // Génération du token JWT
     const secret = fs.readFileSync(path.join(__dirname, "../../.private/private.pem"));
@@ -73,7 +111,10 @@ const inscription = async (req, res) => {
         ]);
     // Réponse au client mobile
     res.status(200).json({
-      message: "Votre compte est créé avec succès. Vous recevrez un code de validation par email.",
+      message: otp.envoye
+        ? "Votre compte est créé avec succès. Vous recevrez un code de validation par email."
+        : "Votre compte est créé. L'envoi du code de vérification a échoué : demandez-en un nouveau depuis /auth/sendOtp.",
+      codeEnvoye: otp.envoye,
       token,
       utilisateur: {
         id: nouveauClient.id,
@@ -124,6 +165,10 @@ const connexion = async (req, res) => {
         email: existe.email,
         telephone: existe.telephone,
         addresse: existe.addresse,
+        // La connexion reste ouverte a un compte non verifie — le fermer
+        // mettrait dehors tous les comptes existants. Mais l'application doit
+        // le savoir : les paiements reels, eux, exigent la verification.
+        isVerified: existe.isVerified,
       },
     });
   } catch (error) {
@@ -214,37 +259,41 @@ const modifierprofil = async (req, res) => {
     return res.status(500).json({ error: "Erreur lors de la mise a jour du profil" });
   }
 };
-const sendOtp= async(req,res)=>{
-    const codeOtp= Math.floor(100000 + Math.random() * 900000).toString();
-    const {email}=req.body;
-    const transport=nodemailler.createTransport(
-        {
-            service:"gmail",
-            auth:{
-                user:ENV.EMAIL,
-                pass:ENV.PASSEMAIL
-            }
-        }
-    );
-    const optionEnvoie={
-        from:ENV.EMAIL,
-        to:email,
-        subject:"code de verification de compte",
-        text:" merci de rejoindre notre plateforme, votre code de verification est le:"+codeOtp
-    };
-    try {
-        await transport.sendMail(optionEnvoie);
-        const date=new Date(Date.now()+5*60*1000);
-        await Otp.create({
-        OtpCode:codeOtp,
-        email:email,
-        dateExpiration:date
-        });
-        res.status(200).json({message:"un code de verificatio a éte envoye a votre addresse email"});        
-    } catch (error) {
-        res.status(400).json(error);  
+// POST /auth/sendOtp   body: { email }
+//
+// Le code est cree puis envoye par le meme chemin que l'inscription. La
+// version precedente dupliquait le transport, sur des variables absentes du
+// gabarit, et repondait 400 en renvoyant l'objet d'erreur brut de nodemailer
+// — details du serveur SMTP compris.
+const sendOtp = async (req, res) => {
+    const { email } = req.body;
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email).trim())) {
+        return res.status(400).json({ message: 'Adresse email invalide' });
     }
 
+    // On ne dit pas si l'adresse a un compte : ce serait un moyen commode
+    // d'enumerer les utilisateurs.
+    const client = await Client.findOne({ where: { email } });
+    if (!client) {
+        return res.status(200).json({
+            message: "Si un compte existe pour cette adresse, un code vient d'y etre envoye."
+        });
+    }
+
+    try {
+        const otp = await envoyerOtp(email);
+        if (!otp.envoye) {
+            return res.status(502).json({
+                message: "Le code n'a pas pu etre envoye. Reessayez dans un instant."
+            });
+        }
+        return res.status(200).json({
+            message: "Un code de verification a ete envoye a votre adresse email."
+        });
+    } catch (error) {
+        console.error('sendOtp:', error);
+        return res.status(500).json({ message: "Erreur serveur lors de l'envoi du code" });
+    }
 }
 const verifyOtp= async (req,res)=>{
   console.log(req.body)

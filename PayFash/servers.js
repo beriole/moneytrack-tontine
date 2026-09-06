@@ -88,6 +88,11 @@ server.use("/api/admin",verifyAdmin,AdminUserManager);
 //synchronisation des modele avec la base de donnee;
 const startserver=async ()=>{
     try {
+        // La connexion se faisait en effet de bord a l'import de config/bd.js,
+        // et son echec n'etait qu'un console.log. Elle est etablie ici, une
+        // fois, et son echec arrete le processus (voir le catch).
+        console.log("tentative de connexion a la base de donnée");
+        await db.authenticate();
         console.log("tentative de synchronisation de la base de donnée");
         // alter:false — un sync simple cree les tables manquantes (CREATE TABLE
         // IF NOT EXISTS) sans reecrire les tables existantes. Avec alter:true,
@@ -106,7 +111,11 @@ const startserver=async ()=>{
         // Sans lui, ces traitements existaient sans jamais s'executer.
         require('./services/tontine/planificateur').demarrer();
     } catch (err) {
-        console.log("erreur lors de la synchronisation avec la base de donnée",err);
+        // Sans exit, le processus restait vivant sans jamais ecouter : ni
+        // serveur, ni erreur visible d'un superviseur. Un demarrage rate doit
+        // se voir.
+        console.error("demarrage impossible — base de donnée injoignable :", err.message);
+        process.exit(1);
     }
 } 
 startserver();
