@@ -1,10 +1,14 @@
 {
   "name": "payfash",
   "version": "1.0.0",
-  "main": "main.js",
+  "main": "servers.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon servers.js"
+    "start": "nodemon servers.js",
+    "verifier": "node scripts/verifier-tontine.js",
+    "seed:tontine": "node scripts/seed-tontine-demo.js",
+    "test": "npm run verifier && npm run test:scenarios",
+    "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse2.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js",
+    "test:paiement": "node scripts/scenario-paiement.js"
   },
   "keywords": [],
   "author": "",

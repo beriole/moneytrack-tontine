@@ -31,8 +31,15 @@ Gouvernance : rôles président / trésorier / censeur / secrétaire, votes, con
 
 **Ce n'est pas un module juxtaposé.** Une tontine est simultanément une ligne de budget,
 une entrée de trésorerie datée, une épargne et de l'argent immobilisé. L'application
-distingue donc partout quatre soldes — **brut / engagé / immobilisé / disponible** — et
-c'est le *disponible* qui est proposé à l'utilisateur, jamais le brut.
+distingue donc quatre soldes — **brut / engagé / immobilisé / disponible** — exposés par
+`GET /tontine/synthese/solde`, et c'est le *disponible* que l'accueil affiche.
+
+Un retrait, lui, se juge sur un cinquième chiffre : le **retirable**, c'est-à-dire le
+solde du compte réellement débité moins les engagements des 30 prochains jours. Le
+`disponible` somme tous les portefeuilles, y compris une épargne qu'un retrait ne
+touche pas. `POST /paiement/retrait` oppose le retirable côté serveur : le dépasser
+reste possible, mais doit être demandé explicitement (`accepterRisque: true`) —
+c'est une décision de l'utilisateur, pas un défaut de contrôle.
 
 ### Paiements
 Encaissements et retraits mobile money (MTN MoMo, Orange Money) via l'agrégateur
@@ -53,13 +60,24 @@ litiges, prêts, AML/anti-fraude, notifications, exports Excel — protégé par
 ```bash
 cd PayFash
 npm install
-cp .env.example .env            # renseigner la base, le secret JWT, Fapshi
-npx sequelize-cli db:migrate    # 8 migrations, toutes idempotentes
+cp .env.example .env            # renseigner la base et Fapshi
+
+# Les clés RSA qui signent les jetons (RS256). Il n'y a pas de secret JWT.
+mkdir -p .private
+openssl genrsa -out .private/private.pem 2048
+openssl rsa -in .private/private.pem -pubout -out .private/public.pem
+
 npm start                       # http://localhost:3000
 ```
 
-Générer aussi une paire de clés RSA dans `PayFash/.private/` (`private.pem`, `public.pem`)
-pour la signature des jetons.
+**L'ordre compte.** Les tables sont créées au démarrage par `db.sync()`, et les
+migrations ne font qu'altérer des tables *existantes* : lancées sur une base
+vierge, elles échouent. Sur une base neuve, `npm start` suffit. Sur une base
+déjà en service, arrêtez le serveur, sauvegardez, puis :
+
+```bash
+npx sequelize-cli db:migrate    # 9 migrations, toutes idempotentes
+```
 
 ### Application mobile
 
@@ -77,6 +95,13 @@ Neuf scénarios de bout en bout couvrent le module, sur une base réelle :
 
 ```bash
 cd PayFash
+npm test                              # la suite complète, hors Fapshi
+npm run test:paiement                 # Fapshi (bac à sable réel, clés requises)
+```
+
+Ou scénario par scénario :
+
+```bash
 node scripts/seed-tontine-demo.js     # jeu de données de démonstration
 node scripts/verifier-tontine.js      # schéma et migrations
 node scripts/scenario-tontine.js      # caisse 1 — le tour rotatif
@@ -113,3 +138,14 @@ Tout mouvement passe désormais par `/paiement/*`, adossé à Fapshi.
 
 `TONTINE_CLIENT_PLATEFORME_ID` doit désigner un client existant. Sans lui, les frais de
 plateforme n'ont pas de destinataire et ne sont **pas prélevés, silencieusement**.
+
+Un retrait dont l'issue est **inconnue** — Fapshi injoignable, délai dépassé, 5xx — n'est
+jamais remboursé automatiquement : l'opérateur a peut-être exécuté le versement, et
+recréditer ferait sortir l'argent deux fois. Le paiement passe en `A_VERIFIER`, les fonds
+restent réservés, et l'opération est reprise à la main. Seul un refus *certain* (4xx,
+requête jamais partie) rembourse.
+
+Les opérations financières de l'administration — remboursement, ajustement de
+portefeuille, versement forcé d'un pot — n'ont **aucune voie d'exécution directe**. Toutes
+déposent une demande (`202`) qu'un second administrateur doit approuver via
+`POST /api/admin/validation/:id/approuver`.

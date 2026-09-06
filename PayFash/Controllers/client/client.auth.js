@@ -143,16 +143,77 @@ const recuperation=async (req,res)=> {
         succes:"vous etes sur le point de recuperer vos identifiant"
     })
 }
-const profil=(req,res)=>{
-    res.status(200).json({
-        succes:"informations sur l'utilisateur"
-    })
-}
-const modifierprofil=(req,res)=>{
-    res.status(200).json({
-        succes:"profil utilisateur modifier avec succes"
-    })
-}
+// Champs qu'un client peut lire et modifier sur son propre compte. Le mot de
+// passe n'en fait pas partie (il passe par /auth/reset), isVerified et
+// isActive non plus : un utilisateur ne se declare pas verifie lui-meme.
+const CHAMPS_PROFIL = ['id', 'nom', 'email', 'telephone', 'isActive', 'isVerified', 'dateInscription'];
+
+// GET /auth/info/:id
+//
+// Renvoyait un message fixe sans rien lire. Le client mobile ne pouvait donc
+// pas afficher un profil : il se rabattait sur ce qu'il avait en cache.
+const profil = async (req, res) => {
+  try {
+    if (!memeClient(req, res, req.params.id)) return;
+
+    const client = await Client.findByPk(req.user.id, { attributes: CHAMPS_PROFIL });
+    if (!client) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+    return res.status(200).json({ utilisateur: client });
+  } catch (error) {
+    console.error('profil:', error);
+    return res.status(500).json({ error: "Erreur lors de la lecture du profil" });
+  }
+};
+
+// PATCH /auth/info/:id   body: { nom?, email?, telephone? }
+//
+// Repondait "profil modifie avec succes" sans rien ecrire.
+const modifierprofil = async (req, res) => {
+  try {
+    if (!memeClient(req, res, req.params.id)) return;
+
+    const { nom, email, telephone } = req.body;
+    const modifs = {};
+
+    if (nom !== undefined) {
+      if (!String(nom).trim()) return res.status(400).json({ error: "Le nom ne peut pas etre vide" });
+      modifs.nom = String(nom).trim();
+    }
+    if (email !== undefined) {
+      const valeur = String(email).trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(valeur)) {
+        return res.status(400).json({ error: "Adresse email invalide" });
+      }
+      modifs.email = valeur;
+    }
+    if (telephone !== undefined) {
+      const chiffres = String(telephone).replace(/\D/g, '');
+      if (chiffres.length < 9) return res.status(400).json({ error: "Numero de telephone invalide" });
+      modifs.telephone = chiffres;
+    }
+
+    if (!Object.keys(modifs).length) {
+      return res.status(400).json({ error: "Aucun champ modifiable fourni (nom, email, telephone)" });
+    }
+
+    await Client.update(modifs, { where: { id: req.user.id } });
+    const client = await Client.findByPk(req.user.id, { attributes: CHAMPS_PROFIL });
+
+    return res.status(200).json({
+      succes: "Profil mis a jour",
+      utilisateur: client
+    });
+  } catch (error) {
+    // email et telephone sont uniques : le conflit se dit, il ne se cache pas
+    // derriere une erreur serveur.
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ error: "Cette adresse email ou ce numero est deja utilise" });
+    }
+    console.error('modifierprofil:', error);
+    return res.status(500).json({ error: "Erreur lors de la mise a jour du profil" });
+  }
+};
 const sendOtp= async(req,res)=>{
     const codeOtp= Math.floor(100000 + Math.random() * 900000).toString();
     const {email}=req.body;

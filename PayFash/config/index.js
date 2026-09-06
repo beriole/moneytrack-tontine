@@ -3,6 +3,9 @@ const dotenv = require('dotenv');
 // systeme (ex: HOSTNAME, defini par Windows comme le nom de la machine).
 dotenv.config({ override: true });
 
+// Note : il n'y a pas de secret JWT ici. Les jetons sont signes en RS256 avec
+// la paire de cles de .private/ (private.pem / public.pem). La variable
+// TOCKEN, longtemps declaree et documentee, n'etait lue par aucun code.
 const ENV = {
     DATABASE: process.env.DATABASE,
     HOSTNAME: process.env.HOSTNAME,
@@ -10,7 +13,6 @@ const ENV = {
     DBPASSWORD: process.env.DBPASSWORD,
     PORT: process.env.PORT,
     DIALECT: process.env.DIALECT,
-    TOCKEN: process.env.TOCKEN,
     DBPORT: process.env.DBPORT,
     PASSEMAIL: process.env.PASS_EMAIL, // inchangé
     EMAIL: process.env.EMAIL,
