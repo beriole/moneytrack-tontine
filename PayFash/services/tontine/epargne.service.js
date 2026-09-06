@@ -55,22 +55,34 @@ class EpargneService {
         const { TontinePartage } = require('../../models');
         const derniere = await TontinePartage.findOne({
             where: { groupeId, statut: 'cloture' },
-            order: [['dateCloture', 'DESC']],
+            order: [['exercice', 'DESC'], ['id', 'DESC']],
             transaction: t
         });
-        return derniere && derniere.dateCloture ? new Date(derniere.dateCloture) : null;
+        return derniere ? (derniere.dernierApportId || 0) : null;
+    }
+
+    /** Derniere ecriture d'apport du groupe, qui bornera la casse en cours. */
+    static async dernierApportId(groupeId, t) {
+        const ligne = await Transaction.findOne({
+            where: { groupeTontineId: groupeId, type: TYPE_APPORT },
+            order: [['id', 'DESC']],
+            attributes: ['id'],
+            transaction: t
+        });
+        return ligne ? ligne.id : 0;
     }
 
     /**
      * Apports cumules par membre, lus dans le grand livre.
      *
-     * `depuis` borne la lecture a l'exercice en cours. Sans borne, on lit
-     * tout l'historique : c'est ce qu'il faut pour une cle d'idempotence,
-     * qui doit rester monotone, et seulement pour ca.
+     * `apresId` borne la lecture a l'exercice en cours : on ne compte que les
+     * ecritures posterieures a la derniere casse. Sans borne, on lit tout
+     * l'historique — c'est ce qu'il faut pour une cle d'idempotence, qui doit
+     * rester monotone, et seulement pour ca.
      */
-    static async apportsParMembre(groupeId, t, depuis = undefined) {
+    static async apportsParMembre(groupeId, t, apresId = undefined) {
         const where = { groupeTontineId: groupeId, type: TYPE_APPORT };
-        if (depuis) where.date = { [Op.gt]: depuis };
+        if (apresId) where.id = { [Op.gt]: apresId };
 
         const lignes = await Transaction.findAll({
             where,

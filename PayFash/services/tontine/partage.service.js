@@ -175,8 +175,14 @@ class PartageService {
                 detail.push({ ...part, transactionId: transaction.id });
             }
 
+            // Borne de l'exercice qu'on solde : la derniere ecriture d'apport
+            // prise en compte. L'exercice suivant repartira strictement
+            // au-dela.
+            const borne = await EpargneService.dernierApportId(groupeId, t);
+
             const partage = deja
                 ? await deja.update({
+                    dernierApportId: borne,
                     capitalPartage: calcul.totalApports,
                     interetsPartages: calcul.interets,
                     amendesPartagees: calcul.amendes,
@@ -188,6 +194,7 @@ class PartageService {
                 : await TontinePartage.create({
                     groupeId,
                     exercice: annee,
+                    dernierApportId: borne,
                     capitalPartage: calcul.totalApports,
                     interetsPartages: calcul.interets,
                     amendesPartagees: calcul.amendes,

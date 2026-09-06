@@ -52,6 +52,11 @@ const TontinePartage = db.define("TontinePartage", {
     dateCloture: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    dernierApportId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Derniere ecriture d'apport incluse dans cette casse. La borne etait une DATE : MySQL tronque les DATETIME a la seconde, si bien qu'un apport depose dans la meme seconde que la cloture etait attribue a l'exercice deja clos. Un identifiant, lui, est strictement croissant et sans ambiguite."
     }
 }, {
     tableName: 'tontine_partages',

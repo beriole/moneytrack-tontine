@@ -47,6 +47,10 @@ function verifier(libelle, condition, detail) {
     console.log('  ' + (ok ? '[ok]  ' : '[KO]  ') + libelle + (detail ? '  — ' + detail : ''));
 }
 function titre(s) { console.log('\n' + s); console.log('-'.repeat(s.length)); }
+async function doitEchouer(libelle, code, fn) {
+    try { await fn(); verifier(libelle, false, 'aucune erreur levee'); }
+    catch (e) { verifier(libelle, e.code === code, `${e.code} — ${e.message}`); }
+}
 async function soldeDe(id) {
     const pf = await Portefeuille.findOne({ where: { ClientPortefeuilleId: id, typePortefeuille: 'courant', estActif: true } });
     return pf ? arrondir(pf.solde) : 0;
@@ -170,6 +174,32 @@ const acteur = (id) => ({ clientId: id });
             solde.retirable === arrondir(Math.max(0, solde.soldeReglement - solde.engage30j)));
         verifier('le retirable ne depasse jamais le compte reellement debite',
             solde.retirable <= solde.soldeReglement && solde.soldeReglement <= solde.brut);
+
+        // Awa a deja cotise (ou beneficie) : son engagement est nul, et la
+        // regle ci-dessus est alors vraie sans rien prouver. On la controle
+        // donc sur un membre qui DOIT encore, seul cas ou le retirable se
+        // detache reellement du solde.
+        const debiteur = [bertrand, clarisse, daniel].find(c => c.id !== cycle1.beneficiaireId);
+        const soldeDebiteur = await SyntheseService.soldeReel(debiteur.id);
+        console.log('  ' + debiteur.nom + ' : engage ' + soldeDebiteur.engage30j
+            + '  |  reglement ' + soldeDebiteur.soldeReglement
+            + '  |  retirable ' + soldeDebiteur.retirable);
+        verifier('un membre qui doit encore a bien un engagement a 30 jours',
+            soldeDebiteur.engage30j >= MONTANT,
+            'cotisation due de ' + MONTANT);
+        verifier('son retirable est ampute de cet engagement',
+            soldeDebiteur.retirable === arrondir(soldeDebiteur.soldeReglement - soldeDebiteur.engage30j)
+            && soldeDebiteur.retirable < soldeDebiteur.soldeReglement,
+            soldeDebiteur.soldeReglement + ' - ' + soldeDebiteur.engage30j
+            + ' = ' + soldeDebiteur.retirable);
+
+        // Et le serveur l'oppose vraiment : un retrait au-dela est refuse.
+        const { PaiementService } = require('../services/paiement/paiement.service');
+        await doitEchouer('un retrait au-dela du retirable est refuse (409)', 409,
+            () => PaiementService.initierRetrait(debiteur.id, {
+                montant: Math.floor(soldeDebiteur.retirable) + 1000,
+                telephone: '670000000'
+            }));
 
         // =============================================================
         titre('5. Le tour est dirige vers le projet');
