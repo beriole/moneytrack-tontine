@@ -271,7 +271,19 @@ async function tours(groupeId) {
 
         await doitEchouer('un simple membre n ouvre pas l enchere', 403,
             () => EnchereService.ouvrir(acteur(daniel.id), cE.id));
-        await EnchereService.ouvrir(acteur(awa.id), cE.id);
+
+        // ouvrir() ne persistait rien : la date limite qu'elle renvoyait
+        // n'existait nulle part, et les offres etaient acceptees hors de
+        // toute fenetre. On verifie donc qu'il FAUT une enchere ouverte.
+        await doitEchouer('sans enchere ouverte, aucune offre n est acceptee', 409,
+            () => EnchereService.offrir(bertrand.id, cE.id, 1000));
+
+        const ouverture = await EnchereService.ouvrir(acteur(awa.id), cE.id);
+        verifier('la fenetre est ecrite sur le cycle',
+            !!(await TontineCycle.findByPk(cE.id)).enchereOuverteJusqu,
+            'limite ' + new Date(ouverture.dateLimite).toLocaleString('fr-FR'));
+        await doitEchouer('une date limite passee est refusee', 400,
+            () => EnchereService.ouvrir(acteur(awa.id), cE.id, new Date(Date.now() - 3600000)));
 
         const encherisseurs = [bertrand.id, daniel.id].filter(id => id !== benefInitial);
         await EnchereService.offrir(encherisseurs[0], cE.id, 1500);
@@ -284,7 +296,23 @@ async function tours(groupeId) {
         verifier('la meilleure offre est la plus forte decote (3000)',
             arrondir(offres.meilleure.montantDecote) === 3000);
 
-        const adj = await EnchereService.adjuger(acteur(awa.id), cE.id);
+        // Fenetre fermee : plus aucune offre. On la referme a la main pour ne
+        // pas attendre 24 h.
+        await TontineCycle.update({ enchereOuverteJusqu: new Date(Date.now() - 1000) },
+            { where: { id: cE.id } });
+        await doitEchouer('les offres sont closes une fois la fenetre passee', 409,
+            () => EnchereService.offrir(encherisseurs[0], cE.id, 4000));
+
+        // Et le planificateur adjuge ce qui a expire : sans cette passe, une
+        // fenetre se fermait sans rien produire et les offres ne servaient a
+        // rien.
+        const passeEnchere = await EnchereService.traiterEncheresEchues(new Date());
+        verifier('le planificateur adjuge les encheres echues',
+            passeEnchere.adjugees === 1, JSON.stringify(passeEnchere));
+        verifier('la fenetre est refermee par l adjudication',
+            (await TontineCycle.findByPk(cE.id)).enchereOuverteJusqu === null);
+
+        const adj = { gagnant: (await TontineCycle.findByPk(cE.id)).beneficiaireId, cotisationsRegenerees: 2 };
         verifier('le pot est adjuge au plus offrant', adj.gagnant === gagnantAttendu);
         verifier('les cotisations sont regenerees pour le nouveau beneficiaire',
             adj.cotisationsRegenerees === 2);

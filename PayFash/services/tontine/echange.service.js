@@ -33,6 +33,10 @@ class EchangeService {
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+            // Le gel et la cloture ont leurs propres messages : dire « la
+            // tontine n'a pas demarre » d'un groupe gele en pleine rotation
+            // envoyait l'utilisateur chercher au mauvais endroit.
+            exigerGroupeActif(groupe, "l'echange de tours");
             if (groupe.statut !== 'actif') throw new ErreurTontine(409, "La tontine n'a pas demarre : il n'y a pas encore de tours");
 
             const demandeur = await TontineMembre.findOne({ where: { groupeId, clientId, statut: 'actif' }, transaction: t });

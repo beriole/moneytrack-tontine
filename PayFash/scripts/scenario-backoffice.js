@@ -24,6 +24,9 @@ const CycleService = require('../services/tontine/cycle.service');
 const AdminTontine = require('../Controllers/admin/admin.tontine');
 const AdminValidation = require('../Controllers/admin/admin.validation');
 const { arrondir, nombre } = require('../services/tontine/commun');
+const CautionService = require('../services/tontine/caution.service');
+const EchangeService = require('../services/tontine/echange.service');
+const { AmendeService } = require('../services/tontine/amende.service');
 
 const EMAILS = ['awa@tontine.local', 'bertrand@tontine.local', 'clarisse@tontine.local', 'daniel@tontine.local'];
 const NOM = 'Backoffice Njangi';
@@ -42,6 +45,10 @@ function verifier(libelle, condition, detail) {
     console.log('  ' + (ok ? '[ok]  ' : '[KO]  ') + libelle + (detail ? '  — ' + detail : ''));
 }
 function titre(s) { console.log('\n' + s); console.log('-'.repeat(s.length)); }
+async function doitEchouer(libelle, code, fn) {
+    try { await fn(); verifier(libelle, false, 'aucune erreur levee'); }
+    catch (e) { verifier(libelle, e.code === code, `${e.code} — ${e.message}`); }
+}
 async function soldeDe(id) {
     const pf = await Portefeuille.findOne({ where: { ClientPortefeuilleId: id, typePortefeuille: 'courant' } });
     return pf ? arrondir(pf.solde) : 0;
@@ -145,6 +152,29 @@ const requete = (admin, extra = {}) => ({
         for (const c of clients) if (await soldeDe(c.id) !== soldesAvant[c.id]) bouge = true;
         verifier('aucun portefeuille de membre n a bouge', !bouge);
 
+        // Le controle precedent ne prouve que ceci : au MOMENT du gel, aucun
+        // solde ne bouge. Il ne disait rien de ce qui se passe ENSUITE — or
+        // le gel ne bloquait en pratique que la cotisation : le versement du
+        // pot, le plus gros mouvement, passait sur un groupe gele.
+        const cycleGele = await TontineCycle.findOne({ where: { groupeId: groupe.id, numeroCycle: 1 } });
+        await doitEchouer('groupe gele : impossible de cotiser', 409,
+            () => CycleService.cotiser(absent.clientId, cycleGele.id));
+        await doitEchouer('groupe gele : impossible de verser le pot', 409,
+            () => CycleService.verser({ clientId: awa.id }, cycleGele.id));
+        await doitEchouer('groupe gele : impossible de bloquer une caution', 409,
+            () => CautionService.bloquer(awa.id, groupe.id, 1000));
+        await doitEchouer("groupe gele : impossible d'echanger un tour", 409,
+            () => EchangeService.proposer(awa.id, groupe.id, bertrand.id, 0));
+
+        // Un gel est une mesure conservatoire : il suspend TOUT, y compris le
+        // reglement d'une dette. On ne laisse pas l'argent circuler pendant
+        // qu'un litige s'instruit. La souplesse porte sur les groupes
+        // TERMINES, pas sur les groupes geles.
+        const amendeGel = await AmendeService.infliger({ systeme: true }, groupe.id,
+            { clientId: absent.clientId, motif: 'retard' });
+        await doitEchouer('groupe gele : meme regler une amende est suspendu', 409,
+            () => AmendeService.payer(absent.clientId, amendeGel.id));
+
         r = fausseReponse();
         await AdminTontine.geler(requete(maker, { params: { id: groupe.id }, body: {} }), r);
         verifier('un second gel est refuse', r.code === 409, r.corps?.error);
@@ -154,6 +184,13 @@ const requete = (admin, extra = {}) => ({
         verifier('le degel rend le statut coherent avec la realite',
             (await TontineGroupe.findByPk(groupe.id)).statut === 'actif',
             'un cycle est en cours, donc actif');
+
+        // Et tout redevient possible : le gel suspend, il ne detruit rien.
+        const soldeAvantAmende = await soldeDe(absent.clientId);
+        await AmendeService.payer(absent.clientId, amendeGel.id);
+        verifier('apres degel, l amende se regle normalement',
+            await soldeDe(absent.clientId) < soldeAvantAmende,
+            'le gel suspend, il ne detruit pas');
 
         titre("5. Le versement force exige DEUX administrateurs");
         r = fausseReponse();

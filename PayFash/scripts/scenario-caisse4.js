@@ -82,6 +82,7 @@ const president = (id) => ({ clientId: id });
 
     console.log('SCENARIO CAISSE 4 — 4 membres, ' + MONTANT + ' XAF/periode, caution 100 %');
     let groupe;
+    const groupesAnnexes = [];   // groupes crees en cours de route, a nettoyer aussi
 
     try {
         // --- 1. Caution ---------------------------------------------
@@ -116,6 +117,32 @@ const president = (id) => ({ clientId: id });
             && await soldePortefeuille(g1.portefeuilleCautionId) === attendue * 4);
         verifier('la caisse du groupe est restee a zero',
             await soldePortefeuille(g1.portefeuilleId) === 0);
+
+        // --- 1 bis. La caution exigee au demarrage --------------------
+        // pourcentageCaution etait configure et affiche depuis toujours sans
+        // que rien ne l'exige jamais : un groupe pouvait demarrer avec une
+        // cascade de recours entierement vide. Le drapeau reste facultatif —
+        // le groupe ci-dessus a demarre sans lui — mais quand il est leve, il
+        // doit mordre.
+        const strict = await GroupeService.creerGroupe(awa.id, {
+            nom: NOM_GROUPE + ' (caution exigee)', type: 'rotative',
+            montantParPeriode: MONTANT, frequence: 'mensuelle', membresMax: 3,
+            modeOrdre: 'anciennete', pourcentageCaution: 100, cautionObligatoire: true
+        });
+        groupesAnnexes.push(strict.id);
+        for (const c of [bertrand, clarisse]) {
+            await GroupeService.rejoindreGroupe(c.id, strict.codeInvitation);
+        }
+        verifier('le drapeau est bien enregistre',
+            (await TontineGroupe.findByPk(strict.id)).cautionObligatoire === true);
+
+        await doitEchouer('caution exigee : le demarrage est refuse sans depot', 409,
+            () => GroupeService.demarrerGroupe(awa.id, strict.id));
+
+        for (const c of [awa, bertrand, clarisse]) await CautionService.bloquer(c.id, strict.id);
+        const demarrageStrict = await GroupeService.demarrerGroupe(awa.id, strict.id);
+        verifier('une fois les cautions deposees, le groupe demarre',
+            !!demarrageStrict.cycle && demarrageStrict.cycle.numeroCycle === 1);
 
         // --- 2. Permissions ------------------------------------------
         titre('2. Le bureau n\'est pas decoratif');
@@ -297,12 +324,26 @@ const president = (id) => ({ clientId: id });
         const sequestre = await soldePortefeuille(gFin.portefeuilleCautionId);
         const caisse = await soldePortefeuille(gFin.portefeuilleId);
         console.log('  ' + 'plateforme'.padEnd(18) + '+' + deltaPlateforme);
+        // Les groupes annexes du scenario immobilisent eux aussi de l'argent :
+        // l'ignorer ferait echouer la conservation pour une bonne raison — les
+        // fonds existent, ils sont juste ailleurs.
+        let annexes = 0;
+        for (const id of groupesAnnexes) {
+            const ga = await TontineGroupe.findByPk(id);
+            if (!ga) continue;
+            annexes = arrondir(annexes
+                + await soldePortefeuille(ga.portefeuilleId)
+                + await soldePortefeuille(ga.portefeuilleCautionId)
+                + await soldePortefeuille(ga.portefeuilleEpargneId));
+        }
+
         console.log('  ' + 'sequestre caution'.padEnd(18) + sequestre);
         console.log('  ' + 'caisse du groupe'.padEnd(18) + caisse);
+        if (annexes) console.log('  ' + 'groupes annexes'.padEnd(18) + annexes);
 
+        const total = arrondir(deltaMembres + deltaPlateforme + sequestre + caisse + annexes);
         verifier('rien ne se perd, rien ne se cree',
-            arrondir(deltaMembres + deltaPlateforme + sequestre + caisse) === 0,
-            'somme = ' + arrondir(deltaMembres + deltaPlateforme + sequestre + caisse));
+            total === 0, 'somme = ' + total);
 
         termine = true;
 
@@ -316,6 +357,15 @@ const president = (id) => ({ clientId: id });
             await Transaction.destroy({ where: { groupeTontineId: groupe.id } });
             if (g) await g.destroy();
             if (ids.length) await Portefeuille.destroy({ where: { id: { [Op.in]: ids } } });
+
+            for (const id of groupesAnnexes) {
+                const ga = await TontineGroupe.findByPk(id);
+                if (!ga) continue;
+                const idsA = [ga.portefeuilleId, ga.portefeuilleCautionId, ga.portefeuilleEpargneId].filter(Boolean);
+                await Transaction.destroy({ where: { groupeTontineId: id } });
+                await ga.destroy();
+                if (idsA.length) await Portefeuille.destroy({ where: { id: { [Op.in]: idsA } } });
+            }
             for (const c of clients) {
                 await Portefeuille.update({ solde: initiaux[c.id] },
                     { where: { ClientPortefeuilleId: c.id, typePortefeuille: 'courant' } });
