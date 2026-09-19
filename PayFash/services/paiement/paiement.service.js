@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const { db, Client, Portefeuille, Transaction, Paiement } = require('../../models');
 const ENV = require('../../config/index');
 const { FapshiService, ErreurFapshi } = require('./fapshi.service');
+const Fonds = require('../fonds.service');
 
 // =====================================================================
 //  Paiements MoneyTrack — recharges et retraits reels.
@@ -355,10 +356,16 @@ class PaiementService {
         // 1. Reserver les fonds.
         const { paiement, portefeuille } = await db.transaction(async (t) => {
             const pf = await this._portefeuille(clientId, portefeuilleId, t, true);
-            if (arrondir(pf.solde) < somme) {
-                throw new ErreurPaiement(402, `Solde insuffisant : ${arrondir(pf.solde)} disponible`);
+            // Le disponible, pas le solde : la part bloquee en garantie ne
+            // part pas vers Mobile Money.
+            const dispo = Fonds.disponible(pf);
+            if (dispo < somme) {
+                const bloque = Fonds.reserve(pf);
+                throw new ErreurPaiement(402, bloque > 0
+                    ? `Solde disponible insuffisant : ${dispo} FCFA disponibles, dont ${bloque} FCFA bloques en garantie exclus`
+                    : `Solde insuffisant : ${dispo} disponible`);
             }
-            const retirable = arrondir(Math.max(0, arrondir(pf.solde) - engage));
+            const retirable = arrondir(Math.max(0, dispo - engage));
             if (engage > 0 && somme > retirable) {
                 throw new ErreurPaiement(409,
                     `Vous pouvez retirer ${retirable} FCFA. ${engage} FCFA sont engages dans vos echeances `

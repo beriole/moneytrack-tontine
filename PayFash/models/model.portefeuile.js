@@ -12,6 +12,15 @@ const Portefeuille = db.define("Portefeuille", {
         allowNull: false,
         defaultValue: 0
     },
+    // Part du solde immobilisee en garantie. Le solde reste celui du
+    // client — il le voit, il lui appartient — mais seul le disponible,
+    // solde - montantReserve, peut sortir. Voir services/fonds.service.js.
+    // Une contrainte CHECK en base interdit qu'elle depasse le solde.
+    montantReserve: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0
+    },
     devise: {
         type: DataTypes.STRING(3),
         allowNull: false,

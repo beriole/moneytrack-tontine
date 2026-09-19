@@ -1,5 +1,6 @@
 const { Portefeuille, Transaction } = require('../../models');
 const { Op } = require('sequelize');
+const Fonds = require('../../services/fonds.service');
 
 // ============================================
 // FONCTIONNALITÉS DE BASE (existantes)
@@ -16,17 +17,23 @@ const solde = async (req, res) => {
         const totalSolde = portefeuilles.reduce((acc, p) => {
             return acc + p.solde;
         }, 0);
+        // Le solde ne dit plus tout : une part peut etre bloquee en
+        // garantie. Elle reste au client — elle compte dans son total —
+        // mais ne peut pas sortir. L'ecran doit pouvoir le montrer.
+        const totalBloque = Fonds.arrondir(portefeuilles.reduce((acc, p) => acc + Fonds.reserve(p), 0));
 
         res.status(200).json({
             message: "Solde des comptes de l'utilisateur",
             totalSolde,
+            totalDisponible: Fonds.arrondir(totalSolde - totalBloque),
+            totalBloque,
             totalDevises: [...new Set(portefeuilles.map(p => p.devise))],
             portefeuilleParDevise: portefeuilles.reduce((acc, p) => {
                 if (!acc[p.devise]) acc[p.devise] = 0;
                 acc[p.devise] += p.solde;
                 return acc;
             }, {}),
-            portefeuilles: portefeuilles
+            portefeuilles: portefeuilles.map(p => ({ ...p.toJSON(), ...Fonds.etat(p) }))
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -111,17 +118,17 @@ const transfer = async (req, res) => {
       if (fromPortefeuille.id === toPortefeuille.id) {
         throw Object.assign(new Error("Impossible de transférer vers le même portefeuille"), { statut: 400 });
       }
-      if (fromPortefeuille.solde < montant) {
-        throw Object.assign(new Error("Solde insuffisant"), {
-          statut: 400, disponible: fromPortefeuille.solde
-        });
+      // Le disponible, pas le solde : la regle vit dans fonds.service, la
+      // meme pour toutes les sorties. Un transfert ne doit pas pouvoir
+      // vider un portefeuille epargne de sa part bloquee en garantie.
+      try {
+        await Fonds.transferer(fromPortefeuille, toPortefeuille, montant, t);
+      } catch (e) {
+        if (e instanceof Fonds.ErreurFonds) {
+          throw Object.assign(new Error(e.message), { statut: e.code, ...e.details });
+        }
+        throw e;
       }
-
-      fromPortefeuille.solde -= parseFloat(montant);
-      toPortefeuille.solde += parseFloat(montant);
-
-      await fromPortefeuille.save({ transaction: t });
-      await toPortefeuille.save({ transaction: t });
 
       await Transaction.bulkCreate([
         { 
@@ -405,6 +412,15 @@ const supprimerPortefeuille = async (req, res) => {
 
         if (!portefeuille) {
             return res.status(404).json({ error: "Portefeuille introuvable" });
+        }
+
+        // Des fonds bloques garantissent une obligation : aucun mode de
+        // suppression ne doit les faire disparaitre avec le portefeuille.
+        if (Fonds.reserve(portefeuille) > 0) {
+            return res.status(409).json({
+                error: "Ce portefeuille porte des fonds bloques en garantie : il ne peut pas etre supprime",
+                bloque: Fonds.reserve(portefeuille)
+            });
         }
 
         // Vérifier si le portefeuille a un solde

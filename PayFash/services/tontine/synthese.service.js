@@ -4,9 +4,10 @@ const { Op } = require('sequelize');
 const {
     Portefeuille,
     TontineGroupe, TontineMembre, TontineCycle, TontineCotisation,
-    TontineAmende, TontineCaution, TontineDemandeCredit, TontineRemboursementCredit
+    TontineAmende, TontineCaution
 } = require('../../models');
 const { nombre, arrondir } = require('./commun');
+const Fonds = require('../fonds.service');
 const EcheancierService = require('./echeancier.service');
 
 // =====================================================================
@@ -89,25 +90,6 @@ class SyntheseService {
                 enRetard: true,
                 groupeId: a.groupeId,
                 reference: { type: 'amende', id: a.id }
-            });
-        }
-
-        const echeances = await TontineRemboursementCredit.findAll({
-            where: { statut: { [Op.in]: ['attendu', 'en_retard'] } },
-            include: [{
-                model: TontineDemandeCredit, as: 'demande',
-                where: { clientId, statut: { [Op.in]: ['decaissee', 'en_defaut'] } },
-                required: true
-            }]
-        });
-        for (const e of echeances) {
-            lignes.push({
-                nature: 'credit',
-                libelle: `Echeance ${e.numeroEcheance} de credit tontine`,
-                montant: arrondir(nombre(e.montantDu) - nombre(e.montantPaye)),
-                date: e.dateEcheance,
-                enRetard: e.statut === 'en_retard',
-                reference: { type: 'echeance_credit', id: e.id }
             });
         }
 
@@ -243,27 +225,23 @@ class SyntheseService {
             });
         }
 
-        // Apports a la caisse d'epargne : recuperables a la casse annuelle.
-        const { EpargneService } = require('./epargne.service');
-        const adhesions = await this._adhesions(clientId);
-        for (const m of adhesions) {
-            const g = m.groupe;
-            if (!g || g.type === 'rotative') continue;
-            try {
-                // Exercice en cours seulement : les apports deja restitues a
-                // la derniere casse ne sont plus immobilises.
-                const apports = await EpargneService.apportsExercice(g.id, null);
-                const mien = arrondir(apports[clientId] || 0);
-                if (mien > 0) {
-                    lignes.push({
-                        nature: 'epargne_groupe',
-                        libelle: `Apports a la caisse — ${g.nom}`,
-                        montant: mien,
-                        groupeId: g.id,
-                        recuperableA: "la cloture de l'exercice, avec sa part du produit"
-                    });
-                }
-            } catch (e) { /* groupe sans pool : rien a compter */ }
+        // Fonds bloques en garantie sur les portefeuilles. A la difference
+        // des cautions — parties au sequestre du groupe — ils sont encore
+        // sur le portefeuille, donc dans le brut : c'est pourquoi le
+        // disponible les retranche.
+        const portefeuilles = await Portefeuille.findAll({
+            where: { ClientPortefeuilleId: clientId, estActif: true }
+        });
+        for (const p of portefeuilles) {
+            const bloque = Fonds.reserve(p);
+            if (bloque <= 0) continue;
+            lignes.push({
+                nature: 'garantie',
+                libelle: `Fonds bloques en garantie — ${p.nom || p.typePortefeuille}`,
+                montant: bloque,
+                portefeuilleId: p.id,
+                recuperableA: "l'extinction des obligations qu'ils garantissent"
+            });
         }
 
         return lignes;
@@ -313,6 +291,9 @@ class SyntheseService {
             where: { ClientPortefeuilleId: clientId, estActif: true }
         });
         const brut = arrondir(portefeuilles.reduce((s, p) => s + nombre(p.solde), 0));
+        // Une part du brut peut etre bloquee en garantie : elle appartient
+        // au client mais ne se depense pas.
+        const bloque = arrondir(portefeuilles.reduce((s, p) => s + Fonds.reserve(p), 0));
 
         const sorties = await this._sorties(clientId);
         const immobilise = await this._immobilise(clientId);
@@ -330,7 +311,7 @@ class SyntheseService {
         // le serveur repondait ensuite « solde insuffisant ». On publie donc
         // aussi ce qui est reellement retirable, tout de suite.
         const pfReglement = await this._portefeuilleReglement(clientId);
-        const soldeReglement = pfReglement ? arrondir(pfReglement.solde) : 0;
+        const soldeReglement = pfReglement ? Fonds.disponible(pfReglement) : 0;
 
         return {
             brut,
@@ -339,10 +320,11 @@ class SyntheseService {
             engage30j: engageCourt,
             engageTotal,
             immobilise: arrondir(immobilise.reduce((s, l) => s + l.montant, 0)),
-            disponible: arrondir(brut - engageCourt),   // ce qu'on peut vraiment depenser ce mois
+            bloque,                                     // dans le brut, mais garantit une obligation
+            disponible: arrondir(brut - bloque - engageCourt),   // ce qu'on peut vraiment depenser ce mois
             retirable: arrondir(Math.max(0, soldeReglement - engageCourt)), // opposable par le serveur
-            alerte: brut < engageCourt
-                ? `Vos engagements des 30 prochains jours (${engageCourt}) depassent votre solde (${brut}).`
+            alerte: brut - bloque < engageCourt
+                ? `Vos engagements des 30 prochains jours (${engageCourt}) depassent votre solde disponible (${arrondir(brut - bloque)}).`
                 : null
         };
     }

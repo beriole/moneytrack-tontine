@@ -2,16 +2,21 @@
 // puis exécutées seulement après approbation par un AUTRE admin (checker).
 const { db, PendingAction, Transaction, Portefeuille } = require('../../models/index');
 const { logAction } = require('./audit');
+const Fonds = require('../../services/fonds.service');
 
 // Les mouvements internes d'une tontine ne se remboursent pas ici : l'argent
 // est dans une caisse de groupe, pas chez la plateforme. Recrediter le client
 // sans debiter la caisse creerait de la monnaie. Ces operations ont leurs
-// propres voies de sortie (saisie de caution, appel au garant, versement
-// force par le maker-checker).
+// propres voies de sortie (saisie de caution, versement force par le
+// maker-checker).
 const TYPES_NON_REMBOURSABLES = [
     'cotisation', 'versement', 'caution_blocage', 'caution_saisie', 'caution_liberation',
     'amende', 'apport_epargne', 'credit_decaissement', 'credit_remboursement',
-    'partage_epargne', 'decote_enchere', 'frais_plateforme', 'appel_garant', 'echange_tour'
+    'partage_epargne', 'decote_enchere', 'frais_plateforme', 'echange_tour',
+    // 'appel_garant' n'est plus produit — le cran du garant a ete supprime —
+    // mais des ecritures anciennes en portent le type. Les laisser dans cette
+    // liste continue de les proteger d'un remboursement par cette voie.
+    'appel_garant'
 ];
 
 // --- Exécuteurs réels (appelés à l'approbation) ---
@@ -61,7 +66,15 @@ async function executeAdjust(payload) {
         if (wallet.typePortefeuille === 'tontine') {
             throw new Error("Une caisse de tontine ne s'ajuste pas ici : passez par le module tontine");
         }
-        if (sens === 'debit' && wallet.solde < valeur) throw new Error('Solde insuffisant');
+        // Meme l'administration ne debite que le disponible : un ajustement
+        // qui entamerait la reserve priverait une tontine de sa garantie,
+        // sans trace dans le dispositif de garanties.
+        if (sens === 'debit' && Fonds.disponible(wallet) < valeur) {
+            const bloque = Fonds.reserve(wallet);
+            throw new Error(bloque > 0
+                ? `Solde disponible insuffisant : ${Fonds.disponible(wallet)} FCFA, ${bloque} FCFA etant bloques en garantie`
+                : 'Solde insuffisant');
+        }
 
         await wallet.update({ solde: wallet.solde + (sens === 'credit' ? valeur : -valeur) }, { transaction: t });
         await Transaction.create({
