@@ -1,4 +1,5 @@
-const { Epargne, TransactionEpargne, EpargneAutomatique, Portefeuille, Transaction } = require('../../models');
+const { db, Epargne, TransactionEpargne, EpargneAutomatique, Portefeuille, Transaction } = require('../../models');
+const Fonds = require('../../services/fonds.service');
 const { Op } = require('sequelize');
 
 // ============================================
@@ -51,6 +52,10 @@ const creerEpargneAvancee = async (req, res) => {
         const progression = 0;
 
         const epargne = await Epargne.create({
+            // Le proprietaire n'etait pas renseigne : l'objectif cree ici
+            // naissait orphelin, introuvable ensuite par son auteur comme
+            // par tous les autres ecrans.
+            user_id: clientId,
             objectif,
             date_debut: debut,
             date_fin: fin,
@@ -85,160 +90,222 @@ const creerEpargneAvancee = async (req, res) => {
 };
 
 // Déposer sur une épargne avec calcul d'intérêts
+// =====================================================================
+//  Argent reel et compteur d'objectif.
+//
+//  Un objectif d'epargne est un COMPTEUR : y deposer ne met, par defaut,
+//  aucun argent de cote. Deux parametres le reliaient pourtant a des
+//  portefeuilles, et ils etaient dangereux :
+//
+//    - le depot debitait `portefeuilleSourceId` sans en verifier le
+//      proprietaire, sans transaction, sans rien crediter en face — l'argent
+//      disparaissait — et avec un montant NEGATIF le « debit » creditait le
+//      portefeuille : de l'argent cree a partir de rien ;
+//    - le retrait creditait `portefeuilleCibleId` — n'importe lequel — sans
+//      rien debiter nulle part : un objectif rempli gratuitement par la
+//      route ordinaire se vidait en argent reel.
+//
+//  La regle est desormais qu'aucun franc n'est cree ni detruit :
+//
+//    depot avec source   source (au client)  ->  portefeuille epargne
+//    retrait avec cible  portefeuille epargne ->  cible (au client)
+//
+//  Le portefeuille epargne, cree a l'inscription, est celui ou l'argent
+//  d'un objectif vit reellement. Sans ces parametres, seul le compteur
+//  bouge, comme avant.
+// =====================================================================
+
+function erreur(statut, message, details = {}) {
+    return Object.assign(new Error(message), { statut, ...details });
+}
+
+/** Un montant strictement positif, au centime. */
+function montantValide(montant) {
+    const m = Math.round(Number(montant) * 100) / 100;
+    if (!Number.isFinite(m) || m <= 0) throw erreur(400, 'Le montant doit etre un nombre strictement positif');
+    return m;
+}
+
+/**
+ * Charge et verrouille les portefeuilles dans l'ordre croissant des
+ * identifiants. Un depot verrouille (source, epargne), un retrait
+ * (epargne, cible) : dans l'ordre d'arrivee, deux operations croisees
+ * pourraient s'attendre mutuellement.
+ */
+async function verrouiller(clientId, ids, t) {
+    const tries = [...new Set(ids)].sort((x, y) => x - y);
+    const charges = {};
+    for (const id of tries) {
+        const pf = await Portefeuille.findOne({
+            where: { id, ClientPortefeuilleId: clientId, estActif: true },
+            transaction: t, lock: t.LOCK.UPDATE
+        });
+        if (!pf) throw erreur(404, 'Portefeuille introuvable');
+        if (pf.typePortefeuille === 'tontine') throw erreur(409, "Une caisse de tontine ne sert pas a l'epargne");
+        charges[id] = pf;
+    }
+    return charges;
+}
+
+async function portefeuilleEpargneId(clientId, t) {
+    const pf = await Portefeuille.findOne({
+        where: { ClientPortefeuilleId: clientId, typePortefeuille: 'epargne', estActif: true },
+        attributes: ['id'], transaction: t
+    });
+    if (!pf) throw erreur(409, "Vous n'avez pas de portefeuille epargne pour recevoir cet argent");
+    return pf.id;
+}
+
+/** Traduit une erreur de fonds en erreur HTTP du controleur. */
+function traduire(e) {
+    if (e instanceof Fonds.ErreurFonds) return erreur(e.code, e.message, e.details);
+    return e;
+}
+
+function repondreErreur(res, e, defaut) {
+    if (e && e.statut) {
+        const { statut, message, ...details } = e;
+        return res.status(statut).json({ error: message, ...details });
+    }
+    console.error(e);
+    return res.status(500).json({ error: defaut });
+}
+
 const deposerEpargne = async (req, res) => {
     const clientId = req.user.id;
     const { epargneId } = req.params;
-    const { montant, portefeuilleSourceId } = req.body;
+    const { portefeuilleSourceId } = req.body;
 
     try {
-        const epargne = await Epargne.findOne({
-            where: { id: epargneId, user_id: clientId }
+        const somme = montantValide(req.body.montant);
+
+        const epargne = await db.transaction(async (t) => {
+            const ep = await Epargne.findOne({
+                where: { id: epargneId, user_id: clientId }, transaction: t, lock: t.LOCK.UPDATE
+            });
+            if (!ep) throw erreur(404, "Épargne introuvable");
+            if (ep.statut === 'termine') throw erreur(400, "Cette épargne est déjà terminée");
+
+            // L'argent d'abord : si le portefeuille ne peut pas payer, le
+            // compteur ne bouge pas. Il avancait jusqu'ici quand meme.
+            if (portefeuilleSourceId) {
+                const cibleId = await portefeuilleEpargneId(clientId, t);
+                const sourceId = parseInt(portefeuilleSourceId, 10);
+                if (sourceId !== cibleId) {
+                    const pfs = await verrouiller(clientId, [sourceId, cibleId], t);
+                    try {
+                        await Fonds.transferer(pfs[sourceId], pfs[cibleId], somme, t);
+                    } catch (e) { throw traduire(e); }
+                    await Transaction.create({
+                        montant: somme, date: new Date(), type: 'epargne_depot', statut: 'Succès', frais: 0,
+                        description: `Mise de cote pour l'objectif « ${ep.objectif} »`,
+                        ClientTransactionId: clientId
+                    }, { transaction: t });
+                }
+                // Source = portefeuille epargne : l'argent y est deja.
+            }
+
+            ep.montant_cumule = Math.round((Number(ep.montant_cumule) + somme) * 100) / 100;
+            if (ep.capitalInitial === 0 || ep.capitalInitial === null) ep.capitalInitial = somme;
+            if (ep.tauxInteret > 0) await calculerInterets(ep);
+            ep.progression = Math.min(100, (ep.montant_cumule / ep.montant_total) * 100);
+            if (ep.montant_cumule >= ep.montant_total && ep.statut !== 'termine') {
+                ep.statut = 'termine';
+                if (ep.tauxInteret > 0) await calculerInterets(ep);
+            }
+            await ep.save({ transaction: t });
+
+            await TransactionEpargne.create({
+                Epargne_id: epargneId,
+                type: 'depot',
+                montant: somme,
+                description: `Dépôt sur l'épargne "${ep.objectif}"`,
+                date: new Date()
+            }, { transaction: t });
+
+            return ep;
         });
 
-        if (!epargne) {
-            return res.status(404).json({ error: "Épargne introuvable" });
-        }
-
-        if (epargne.statut === 'termine') {
-            return res.status(400).json({ error: "Cette épargne est déjà terminée" });
-        }
-
-        // Mise à jour du montant
-        const ancienMontant = epargne.montant_cumule;
-        epargne.montant_cumule += parseFloat(montant);
-        
-        // Si premier dépôt, enregistrer le capital initial
-        if (epargne.capitalInitial === 0 || epargne.capitalInitial === null) {
-            epargne.capitalInitial = parseFloat(montant);
-        }
-
-        // Calculer les intérêts
-        if (epargne.tauxInteret > 0) {
-            await calculerInterets(epargne);
-        }
-
-        // Mettre à jour la progression
-        epargne.progression = Math.min(100, (epargne.montant_cumule / epargne.montant_total) * 100);
-
-        // Vérifier si l'objectif est atteint
-        if (epargne.montant_cumule >= epargne.montant_total && epargne.statut !== 'termine') {
-            epargne.statut = 'termine';
-            // Calculer les intérêts finaux
-            if (epargne.tauxInteret > 0) {
-                await calculerInterets(epargne);
-            }
-        }
-
-        await epargne.save();
-
-        // Créer la transaction
-        await TransactionEpargne.create({
-            Epargne_id: epargneId,
-            type: 'depot',
-            montant,
-            description: `Dépôt sur l'épargne "${epargne.objectif}"`,
-            date: new Date()
-        });
-
-        // Optionnel: Transférer depuis le portefeuille source
-        if (portefeuilleSourceId) {
-            const portefeuille = await Portefeuille.findByPk(portefeuilleSourceId);
-            if (portefeuille && portefeuille.solde >= montant) {
-                portefeuille.solde -= montant;
-                await portefeuille.save();
-            }
-        }
-
-        // Réponse avec progression
-        const progressionData = {
-            actuel: epargne.montant_cumule,
-            objectif: epargne.montant_total,
-            pourcentage: epargne.progression,
-            restant: Math.max(0, epargne.montant_total - epargne.montant_cumule),
-            objectifAtteint: epargne.montant_cumule >= epargne.montant_total,
-            interets: epargne.interetCumule
-        };
-
-        res.json({
+        return res.json({
             message: "Dépôt effectué",
             epargne,
-            progression: progressionData,
+            progression: {
+                actuel: epargne.montant_cumule,
+                objectif: epargne.montant_total,
+                pourcentage: epargne.progression,
+                restant: Math.max(0, epargne.montant_total - epargne.montant_cumule),
+                objectifAtteint: epargne.montant_cumule >= epargne.montant_total,
+                interets: epargne.interetCumule
+            },
             celebration: epargne.montant_cumule >= epargne.montant_total
         });
-
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Erreur lors du dépôt" });
+    } catch (e) {
+        return repondreErreur(res, e, "Erreur lors du dépôt");
     }
 };
 
-// Retirer d'une épargne
 const retirerEpargne = async (req, res) => {
     const clientId = req.user.id;
     const { epargneId } = req.params;
-    const { montant, portefeuilleCibleId } = req.body;
+    const { portefeuilleCibleId } = req.body;
 
     try {
-        const epargne = await Epargne.findOne({
-            where: { id: epargneId, user_id: clientId }
-        });
+        const somme = montantValide(req.body.montant);
 
-        if (!epargne) {
-            return res.status(404).json({ error: "Épargne introuvable" });
-        }
-
-        if (epargne.montant_cumule < montant) {
-            return res.status(400).json({ 
-                error: "Solde insuffisant",
-                disponible: epargne.montant_cumule
+        const epargne = await db.transaction(async (t) => {
+            const ep = await Epargne.findOne({
+                where: { id: epargneId, user_id: clientId }, transaction: t, lock: t.LOCK.UPDATE
             });
-        }
-
-        // Mise à jour du montant
-        epargne.montant_cumule -= parseFloat(montant);
-        
-        // Ajuster les intérêts au prorata (si taux > 0)
-        if (epargne.tauxInteret > 0 && epargne.interetCumule > 0) {
-            const ratio = (epargne.montant_cumule + montant) / (epargne.montant_cumule + montant + epargne.interetCumule);
-            epargne.interetCumule = Math.floor(epargne.interetCumule * ratio);
-        }
-
-        // Mettre à jour la progression
-        epargne.progression = Math.min(100, (epargne.montant_cumule / epargne.montant_total) * 100);
-
-        // Vérifier si le statut doit changer
-        if (epargne.montant_cumule < epargne.montant_total && epargne.statut === 'termine') {
-            epargne.statut = 'en cours';
-        }
-
-        await epargne.save();
-
-        // Créer la transaction
-        await TransactionEpargne.create({
-            Epargne_id: epargneId,
-            type: 'retrait',
-            montant,
-            description: `Retrait de l'épargne "${epargne.objectif}"`,
-            date: new Date()
-        });
-
-        // Optionnel: Transférer vers le portefeuille cible
-        if (portefeuilleCibleId) {
-            const portefeuille = await Portefeuille.findByPk(portefeuilleCibleId);
-            if (portefeuille) {
-                portefeuille.solde += montant;
-                await portefeuille.save();
+            if (!ep) throw erreur(404, "Épargne introuvable");
+            if (Number(ep.montant_cumule) < somme) {
+                throw erreur(400, "Solde insuffisant", { disponible: ep.montant_cumule });
             }
-        }
 
-        res.json({
-            message: "Retrait effectué",
-            epargne
+            // Le retrait vers un portefeuille crediait la cible sans debiter
+            // quoi que ce soit : l'argent sort maintenant du portefeuille
+            // epargne, ou il a ete mis de cote — et seulement de sa part
+            // disponible, pas de celle qui garantit une tontine.
+            if (portefeuilleCibleId) {
+                const sourceId = await portefeuilleEpargneId(clientId, t);
+                const cibleId = parseInt(portefeuilleCibleId, 10);
+                if (sourceId !== cibleId) {
+                    const pfs = await verrouiller(clientId, [sourceId, cibleId], t);
+                    try {
+                        await Fonds.transferer(pfs[sourceId], pfs[cibleId], somme, t);
+                    } catch (e) { throw traduire(e); }
+                    await Transaction.create({
+                        montant: somme, date: new Date(), type: 'epargne_retrait', statut: 'Succès', frais: 0,
+                        description: `Retrait de l'objectif « ${ep.objectif} »`,
+                        ClientTransactionId: clientId
+                    }, { transaction: t });
+                }
+            }
+
+            const avant = Number(ep.montant_cumule);
+            ep.montant_cumule = Math.round((avant - somme) * 100) / 100;
+            // Interets au prorata du capital retire.
+            if (ep.tauxInteret > 0 && ep.interetCumule > 0) {
+                const ratio = avant / (avant + Number(ep.interetCumule));
+                ep.interetCumule = Math.floor(Number(ep.interetCumule) * ratio);
+            }
+            ep.progression = Math.min(100, (ep.montant_cumule / ep.montant_total) * 100);
+            if (ep.montant_cumule < ep.montant_total && ep.statut === 'termine') ep.statut = 'en cours';
+            await ep.save({ transaction: t });
+
+            await TransactionEpargne.create({
+                Epargne_id: epargneId,
+                type: 'retrait',
+                montant: somme,
+                description: `Retrait de l'épargne "${ep.objectif}"`,
+                date: new Date()
+            }, { transaction: t });
+
+            return ep;
         });
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Erreur lors du retrait" });
+        return res.json({ message: "Retrait effectué", epargne });
+    } catch (e) {
+        return repondreErreur(res, e, "Erreur lors du retrait");
     }
 };
 
