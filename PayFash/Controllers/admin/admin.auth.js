@@ -73,6 +73,16 @@ const creerAdmin = async (req, res) => {
         return res.status(201).json({ success: true, data: sanitize(admin) });
     } catch (error) {
         console.error('creerAdmin:', error);
+        // Une adresse malformee ou un role hors ENUM sont des fautes de
+        // SAISIE, pas des pannes : les renvoyer en 500 « Erreur serveur »
+        // laissait le formulaire sans rien a dire a l'operateur, qui ne
+        // pouvait pas deviner laquelle de ses cinq valeurs etait refusee.
+        if (error.name === 'SequelizeValidationError') {
+            return res.status(400).json({
+                success: false,
+                error: error.errors.map((e) => e.message).join(' ; ')
+            });
+        }
         return res.status(500).json({ success: false, error: 'Erreur serveur' });
     }
 };
