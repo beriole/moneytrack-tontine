@@ -86,7 +86,7 @@ async function tours(groupeId) {
         // =============================================================
         titre('1. Reglement interieur signe');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOMS[0], type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOMS[0], montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete', pourcentageCaution: 100
         });
         for (const c of [bertrand, clarisse, daniel]) await GroupeService.rejoindreGroupe(c.id, groupe.codeInvitation);
@@ -98,7 +98,7 @@ async function tours(groupeId) {
         verifier('reglement genere en version 1, hash SHA-256',
             contrat.version === 1 && /^[0-9a-f]{64}$/.test(contrat.hashContenu));
         verifier('le texte par defaut reprend les regles reelles du groupe',
-            contrat.contenu.includes(String(MONTANT)) && contrat.contenu.includes('garant'));
+            contrat.contenu.includes(String(MONTANT)) && contrat.contenu.includes('caution'));
 
         for (const c of clients) await ContratService.signer(c.id, contrat.id, '127.0.0.1');
         await doitEchouer('on ne signe pas deux fois', 409,
@@ -140,15 +140,25 @@ async function tours(groupeId) {
         await doitEchouer('une seule voix par membre', 409,
             () => VoteService.repondre(awa.id, vote.id, 'contre'));
         const r2 = await VoteService.repondre(bertrand.id, vote.id, 'pour');
-        const r3 = await VoteService.repondre(daniel.id, vote.id, 'contre');
-        verifier('la cible est exclue du corps electoral (3 electeurs, pas 4)',
-            r3.depouillementPossible === true);
 
+        // Le scrutin est encore ouvert : c'est le seul moment ou le
+        // depouillement manuel se teste, puisque le dernier suffrage s'en
+        // chargera.
         await doitEchouer('un simple membre ne depouille pas', 403,
             () => VoteService.depouiller(acteur(daniel.id), vote.id));
 
         const avantExclusion = await tours(groupe.id);
-        const depouillement = await VoteService.depouiller(acteur(awa.id), vote.id);
+        const r3 = await VoteService.repondre(daniel.id, vote.id, 'contre');
+        verifier('la cible est exclue du corps electoral (3 electeurs, pas 4)',
+            r3.depouillementPossible === true);
+
+        // Le resultat etait acquis des le dernier suffrage : l'attente d'un
+        // clic du bureau n'ajoutait rien a la decision du groupe.
+        const depouillement = r3.depouillement;
+        verifier('le scrutin se depouille des le dernier suffrage', !!depouillement);
+
+        await doitEchouer('un scrutin depouille ne se redepouille pas', 409,
+            () => VoteService.depouiller(acteur(awa.id), vote.id));
         verifier('scrutin approuve 2 pour / 1 contre sur 3 electeurs',
             depouillement.resultat === 'approuve' && depouillement.pour === 2
             && depouillement.contre === 1 && depouillement.electeurs === 3);
@@ -203,7 +213,7 @@ async function tours(groupeId) {
         // =============================================================
         titre('5. Marche des tours');
         groupeS = await GroupeService.creerGroupe(awa.id, {
-            nom: NOMS[2], type: 'rotative', montantParPeriode: 5000,
+            nom: NOMS[2], montantParPeriode: 5000,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete'
         });
         for (const c of [bertrand, clarisse, daniel]) await GroupeService.rejoindreGroupe(c.id, groupeS.codeInvitation);
@@ -259,7 +269,7 @@ async function tours(groupeId) {
         // =============================================================
         titre('6. Enchere sur le pot');
         groupeE = await GroupeService.creerGroupe(awa.id, {
-            nom: NOMS[1], type: 'rotative', montantParPeriode: 10000,
+            nom: NOMS[1], montantParPeriode: 10000,
             frequence: 'mensuelle', membresMax: 3, modeOrdre: 'enchere'
         });
         for (const c of [bertrand, daniel]) await GroupeService.rejoindreGroupe(c.id, groupeE.codeInvitation);

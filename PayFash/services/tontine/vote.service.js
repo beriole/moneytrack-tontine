@@ -6,6 +6,7 @@ const {
     TontineGroupe, TontineMembre, TontineVote, TontineVoteReponse, TontineCaution
 } = require('../../models');
 const { ErreurTontine, nombre, arrondir, exigerRole } = require('./commun');
+const { exigerActe } = require('./permissions');
 
 // =====================================================================
 //  Gouvernance.
@@ -17,13 +18,16 @@ const { ErreurTontine, nombre, arrondir, exigerRole } = require('./commun');
 //  transaction que le calcul du resultat.
 // =====================================================================
 
-const SUJETS = ['admettre', 'exclure', 'modifier_regles', 'dissoudre', 'elire_ordre', 'approuver_credit'];
+const SUJETS = ['admettre', 'exclure', 'modifier_regles', 'dissoudre', 'elire_ordre'];
 const MODES = ['majorite', 'qualifiee', 'unanimite'];
 const CHOIX = ['pour', 'contre', 'abstention'];
 
 // Seuls ces champs du groupe sont modifiables par vote. Le reste (caisse,
 // code d'invitation, createur) n'a rien a faire dans une deliberation.
-const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'destinationAmendes', 'membresMax'];
+// La destination des amendes n'en fait plus partie : elles indemnisent
+// toujours le membre lese (voir amende.service.js), il n'y a plus de
+// caisse d'epargne vers laquelle les detourner.
+const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'membresMax'];
 
 class VoteService {
 
@@ -34,16 +38,6 @@ class VoteService {
         const { sujet, cibleId, description, mode = 'majorite', dateLimite, payload } = donnees;
         if (!SUJETS.includes(sujet)) throw new ErreurTontine(400, `Sujet invalide (attendu : ${SUJETS.join(', ')})`);
         if (!MODES.includes(mode)) throw new ErreurTontine(400, `Mode invalide (attendu : ${MODES.join(', ')})`);
-
-        // Le scrutin d'approbation de credit n'est pas ouvert a la main : il
-        // est cree par la demande elle-meme (CreditService.demander), qui seul
-        // sait a quelle demande le rattacher. Ouvert par un membre, cibleId
-        // n'etait controle nulle part et pouvait designer la demande d'un
-        // AUTRE groupe, que ce groupe-ci approuvait alors a sa place.
-        if (sujet === 'approuver_credit') {
-            throw new ErreurTontine(409,
-                "Ce scrutin s'ouvre automatiquement lors d'une demande de credit : il ne se cree pas a la main");
-        }
 
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t });
@@ -58,8 +52,11 @@ class VoteService {
                     where: { groupeId, clientId: parseInt(cibleId, 10) }, transaction: t
                 });
                 if (!cible) throw new ErreurTontine(404, "La cible n'est pas membre du groupe");
-                if (sujet === 'exclure' && cible.clientId === groupe.createurId) {
-                    throw new ErreurTontine(409, 'Le createur du groupe ne peut pas etre exclu');
+                // Meme regle qu'a l'exclusion directe : c'est la presidence
+                // en exercice qui protege, pas la qualite de createur.
+                if (sujet === 'exclure' && cible.role === 'president') {
+                    throw new ErreurTontine(409,
+                        "Le president ne peut pas etre exclu : transmettez d'abord la presidence");
                 }
             }
             if (sujet === 'elire_ordre' && (!payload || !Array.isArray(payload.ordre))) {
@@ -130,7 +127,30 @@ class VoteService {
                 voteId, clientId, choix, commentaire: commentaire || null, dateReponse: new Date()
             }, { transaction: t });
 
-            return { reponse, depouillementPossible: await this._toutLeMondeAVote(vote, t) };
+            return {
+                reponse,
+                voteId: vote.id,
+                depouillementPossible: await this._toutLeMondeAVote(vote, t)
+            };
+        }).then(async (r) => {
+            // Quand le dernier electeur s'est exprime, le scrutin n'a plus
+            // rien a attendre : le resultat est acquis, et il ne changera
+            // pas. Il restait pourtant « en attente » jusqu'a la date limite
+            // ou jusqu'a ce qu'une personne du bureau clique — une
+            // formalite, pas une decision, et le tresorier qui s'en
+            // chargeait n'existe plus.
+            //
+            // Le depouillement se fait apres le commit, dans sa propre
+            // transaction : il relit et verrouille les memes lignes, et les
+            // imbriquer bloquerait. Un echec ne remet pas le vote en cause —
+            // la reponse est enregistree, la date limite depouillera.
+            if (!r.depouillementPossible) return r;
+            try {
+                r.depouillement = await this.depouiller({ systeme: true }, r.voteId);
+            } catch (e) {
+                console.log('[tontine] depouillement automatique impossible :', e.message);
+            }
+            return r;
         });
     }
 
@@ -178,8 +198,7 @@ class VoteService {
             if (vote.resultat !== 'en_attente') throw new ErreurTontine(409, 'Ce scrutin est deja depouille');
 
             if (!acteur.systeme) {
-                await exigerRole(vote.groupeId, acteur.clientId, ['president', 'secretaire'], t,
-                    'depouiller un scrutin');
+                await exigerActe('depouillerVote', vote.groupeId, acteur.clientId, t);
                 const clos = new Date(vote.dateLimite) <= new Date();
                 if (!clos && !(await this._toutLeMondeAVote(vote, t))) {
                     throw new ErreurTontine(409,
@@ -197,14 +216,6 @@ class VoteService {
             let effet;
             if (compte.resultat === 'approuve') {
                 effet = await this._appliquer(vote, t);
-            } else if (vote.sujet === 'approuver_credit'
-                       && await this._demandeDuGroupe(vote.cibleId, vote.groupeId, t)) {
-                // Un credit non approuve doit etre clos, sinon la demande
-                // reste eternellement "en attente" et bloque l'emprunteur.
-                // Un rejet ne porte, lui aussi, que sur une demande du groupe.
-                const CreditService = require('./credit.service');
-                await CreditService.rejeter(vote.cibleId, t);
-                effet = { applique: true, detail: 'Demande de credit rejetee par le groupe' };
             } else {
                 effet = { applique: false, detail: 'Vote non adopte : aucun effet' };
             }
@@ -299,40 +310,9 @@ class VoteService {
                 };
             }
 
-            case 'approuver_credit': {
-                const CreditService = require('./credit.service');
-                // Ceinture et bretelles : la demande doit relever de la caisse
-                // de CE groupe. Un scrutin ne decide que chez lui.
-                if (!(await this._demandeDuGroupe(vote.cibleId, groupe.id, t))) {
-                    return { applique: false, detail: 'Demande de credit etrangere a ce groupe : aucun effet' };
-                }
-                const demande = await CreditService.marquerApprouvee(vote.cibleId, t);
-                if (!demande) return { applique: false, detail: 'Demande de credit introuvable' };
-                return {
-                    applique: true,
-                    detail: `Credit de ${demande.montant} FCFA approuve, en attente de decaissement par le tresorier`,
-                    demandeId: demande.id
-                };
-            }
-
             default:
                 return { applique: false, detail: 'Sujet sans effet automatique' };
         }
-    }
-
-    /**
-     * La demande de credit visee appartient-elle bien a la caisse de ce
-     * groupe ? `cibleId` porte tantot un clientId, tantot un demandeId selon
-     * le sujet : rien dans le schema ne garantit la coherence, il faut donc
-     * la verifier avant d'agir.
-     */
-    static async _demandeDuGroupe(demandeId, groupeId, t) {
-        const { TontineDemandeCredit, TontinePoolCredit } = require('../../models');
-        if (!demandeId) return false;
-        const demande = await TontineDemandeCredit.findByPk(demandeId, { transaction: t });
-        if (!demande) return false;
-        const pool = await TontinePoolCredit.findByPk(demande.poolId, { transaction: t });
-        return !!pool && pool.groupeId === groupeId;
     }
 
     /**

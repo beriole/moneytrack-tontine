@@ -39,12 +39,18 @@ const detailVote = async (req, res) => {
 const repondreVote = async (req, res) => {
     try {
         const r = await VoteService.repondre(req.user.id, req.params.voteId, req.body.choix, req.body.commentaire);
-        return res.status(201).json({
-            message: r.depouillementPossible
-                ? 'Voix enregistree. Tous les electeurs se sont exprimes : le scrutin peut etre depouille.'
-                : 'Voix enregistree.',
-            ...r
-        });
+        // Le scrutin se depouille de lui-meme des que le dernier electeur
+        // s'est exprime : le message annonçait « peut etre depouille » et
+        // laissait le groupe attendre une action qui n'en etait pas une.
+        let message = 'Voix enregistree.';
+        if (r.depouillement) {
+            message = `Voix enregistree. Tous les electeurs se sont exprimes : scrutin ${r.depouillement.resultat}.`
+                + (r.depouillement.effet && r.depouillement.effet.detail
+                    ? ` ${r.depouillement.effet.detail}` : '');
+        } else if (r.depouillementPossible) {
+            message = 'Voix enregistree. Tous les electeurs se sont exprimes : le scrutin va etre depouille.';
+        }
+        return res.status(201).json({ message, ...r });
     } catch (e) { return repondreErreur(res, e); }
 };
 
