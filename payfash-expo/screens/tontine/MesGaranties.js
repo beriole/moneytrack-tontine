@@ -6,7 +6,7 @@ import { colors } from '../../theme';
 import s from './styleTontine';
 import { Bouton, Chargement, Vide, Info, Stat, Ligne, Progression } from './composants';
 import {
-  mesGaranties, detailGarantie, libererGarantie, messageErreur, fcfa, dateCourte,
+  mesGaranties, detailGarantie, libererGarantie, reprendreExcedent, messageErreur, fcfa, dateCourte,
 } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
 
@@ -56,6 +56,20 @@ export default function MesGaranties() {
   }, []);
 
   useFocusEffect(useCallback(() => { charger(); }, [charger]));
+
+  const reprendre = async (bloc) => {
+    try {
+      setAction(`excedent-${bloc.groupeId}`);
+      const { data: r } = await reprendreExcedent(bloc.groupeId);
+      await apresMouvement();
+      await charger();
+      Alert.alert('Garantie allegee', r.message);
+    } catch (e) {
+      Alert.alert('Reprise impossible', messageErreur(e));
+    } finally {
+      setAction(null);
+    }
+  };
 
   const voirDetail = async (g) => {
     try {
@@ -144,6 +158,20 @@ export default function MesGaranties() {
                         : `Le reglement exige ${bloc.tauxExige} % (${fcfa(bloc.montantExige)}) : il manque ${fcfa(bloc.manqueExige)}, sans quoi votre pot sera suspendu.`}
                     </Text>
                   )}
+                  {bloc.liberable > 0 && (
+                    <>
+                      <Text style={[s.aide, { color: colors.success }]}>
+                        {`${fcfa(bloc.liberable)} ne servent plus a couvrir vos cotisations. ${bloc.raisonLiberation}.`}
+                      </Text>
+                      <Bouton
+                        titre={`Reprendre ${fcfa(bloc.liberable)}`}
+                        icone="lock-open-variant-outline"
+                        variante="success"
+                        charge={action === `excedent-${bloc.groupeId}`}
+                        onPress={() => reprendre(bloc)}
+                      />
+                    </>
+                  )}
                   {bloc.manque > 0 && bloc.statutGroupe !== 'termine' && (
                     <Bouton
                       titre={`Completer la couverture (${fcfa(bloc.manque)})`}
@@ -194,7 +222,7 @@ export default function MesGaranties() {
           ))
         )}
 
-        <Info texte="Une garantie ne quitte pas votre compte : elle cesse seulement d'etre depensable. Si une cotisation reste impayee a l'echeance, seul le montant manquant y est preleve. Le reste vous revient a la fin de la rotation." />
+        <Info texte="Une garantie ne quitte pas votre compte : elle cesse seulement d'etre depensable. Si une cotisation reste impayee a l'echeance, seul le montant manquant y est preleve. A chaque cotisation payee, la part qui depasse ce qui doit rester couvert vous revient ; le reste, a la fin de la rotation." />
       </ScrollView>
     </SafeAreaView>
   );

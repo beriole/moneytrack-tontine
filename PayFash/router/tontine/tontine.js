@@ -121,6 +121,8 @@ route.get("/groupes/:groupeId/couverture", verifyToken, GAR.couvertureGroupe);
 route.get("/groupes/:groupeId/eligibilite", verifyToken, GAR.eligibilite);
 route.get("/groupes/:groupeId/garanties/sources", verifyToken, GAR.sources);
 route.get("/groupes/:groupeId/garanties/simulation", verifyToken, GAR.simulation);
+route.get("/groupes/:groupeId/garanties/excedent", verifyToken, GAR.excedent);
+route.post("/groupes/:groupeId/garanties/reprendre-excedent", verifyToken, GAR.reprendreExcedent);
 route.get("/groupes/:groupeId/garanties", verifyToken, GAR.garantiesGroupe);
 route.post("/groupes/:groupeId/garanties", verifyToken, GAR.affecter);
 

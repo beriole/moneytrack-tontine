@@ -565,6 +565,10 @@ class GarantieService {
                 bloc.suffisant = c.suffisant;
                 bloc.manque = arrondir(Math.max(0, c.exposition - c.couvert));
                 bloc.regle = c.regle;
+                // Ce qui ne sert plus a rien et peut lui etre rendu maintenant.
+                const e = await require('./liberation.service').excedent(clientId, bloc.groupeId);
+                bloc.liberable = e.liberable;
+                bloc.raisonLiberation = e.raison;
             } catch (e) {
                 bloc.exposition = null;
             }

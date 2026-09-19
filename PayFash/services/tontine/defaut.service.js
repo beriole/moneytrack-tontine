@@ -113,7 +113,35 @@ class DefautService {
             if (restantes === 0) await cycle.update({ statut: 'actif' }, { transaction: t });
         }
 
-        if (statut === 'payee') await this._libererSiPlusRienADevoir(cotisation.clientId, cycle.groupeId, t);
+        if (statut !== 'payee') return;
+        if (mode === 'membre') {
+            await this.apresReglement(cotisation.clientId, cycle.groupeId,
+                `cotisation du cycle ${cycle.numeroCycle} payee`, t);
+        } else {
+            // Apres un recouvrement, c'est deja sa garantie qui a paye : pas
+            // de liberation progressive, seulement celle de fin de dette.
+            await this._libererSiPlusRienADevoir(cotisation.clientId, cycle.groupeId, t);
+        }
+    }
+
+    /**
+     * Apres un reglement du membre (cotisation, regularisation, amende) :
+     * ce qu'il doit encore a baisse. Rend ses garanties s'il ne doit plus
+     * rien et que son adhesion est finie ; sinon, la part qui depasse ce
+     * qui doit rester couvert (liberation progressive).
+     */
+    static async apresReglement(clientId, groupeId, quoi, t) {
+        await this._libererSiPlusRienADevoir(clientId, groupeId, t);
+        const LiberationService = require('./liberation.service');
+        const r = await LiberationService.libererExcedentDans({ systeme: true }, clientId, groupeId,
+            `Liberation progressive : ${quoi}`, t);
+        if (r.libere > 0 && typeof t.afterCommit === 'function') {
+            t.afterCommit(async () => {
+                const groupe = await TontineGroupe.findByPk(groupeId);
+                await LiberationService._notifier(clientId, groupe, r.libere);
+            });
+        }
+        return r;
     }
 
     /** Le client doit-il encore une cotisation echue dans ce groupe ? */

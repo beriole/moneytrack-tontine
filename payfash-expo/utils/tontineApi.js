@@ -101,6 +101,10 @@ export const affecterGarantie = (groupeId, portefeuilleId, montant, hashTexte) =
 export const mesGaranties = () => api.get('/tontine/garanties');
 export const detailGarantie = (id) => api.get(`/tontine/garanties/${id}`);
 export const libererGarantie = (id) => api.post(`/tontine/garanties/${id}/liberer`);
+// Liberation progressive : la part des garanties qui depasse ce qui doit
+// rester couvert.
+export const excedentGaranties = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties/excedent`);
+export const reprendreExcedent = (groupeId) => api.post(`/tontine/groupes/${groupeId}/garanties/reprendre-excedent`);
 export const garantiesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties`);
 // Ce que je couvre, ce que le reglement exige de moi, ce qui manque.
 export const couvertureGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/couverture`);

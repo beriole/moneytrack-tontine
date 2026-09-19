@@ -148,7 +148,26 @@ const garantiesGroupe = async (req, res) => {
     } catch (e) { return repondreErreur(res, e); }
 };
 
+// GET /tontine/groupes/:groupeId/garanties/excedent
+// Ce qui peut m'etre rendu maintenant, et pourquoi.
+const excedent = async (req, res) => {
+    try {
+        const LiberationService = require('../../services/tontine/liberation.service');
+        return res.status(200).json(await LiberationService.excedent(req.user.id, req.params.groupeId));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// POST /tontine/groupes/:groupeId/garanties/reprendre-excedent
+const reprendreExcedent = async (req, res) => {
+    try {
+        const LiberationService = require('../../services/tontine/liberation.service');
+        const r = await LiberationService.reprendreExcedent(req.user.id, req.params.groupeId);
+        return res.status(200).json({ message: `${r.libere} FCFA de nouveau disponibles.`, ...r });
+    } catch (e) { return repondreErreur(res, e); }
+};
+
 module.exports = {
+    excedent, reprendreExcedent,
     monExposition, expositionGroupe, couvertureGroupe, modelesCouverture, eligibilite, maSituation,
     sources, simulation, affecter,
     mesGaranties, detail, liberer, garantiesGroupe

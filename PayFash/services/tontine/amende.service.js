@@ -280,6 +280,10 @@ class AmendeService {
                 transactionId: transaction.id
             }, { transaction: t });
 
+            // Une amende reglee fait baisser ce que le membre doit encore.
+            await require('./defaut.service').apresReglement(clientId, groupe.id,
+                `amende (${amende.motif}) reglee`, t);
+
             return { amende, transaction, soldeRestant: arrondir(portefeuille.solde) };
         }
     }

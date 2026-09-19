@@ -156,6 +156,14 @@ class NotificationTontineService {
         );
     }
 
+    static async garantieLiberee(clientId, groupe, montant) {
+        await this.envoyer(
+            clientId,
+            `${fcfa(montant)} de votre garantie dans « ${groupe.nom} » sont de nouveau disponibles : vos cotisations payees ont reduit ce qui doit rester couvert.`,
+            { type: 'system', lien: { ecran: 'MesGaranties', params: {} } }
+        );
+    }
+
     static async membreExclu(clientId, groupe, motif) {
         await this.envoyer(
             clientId,
