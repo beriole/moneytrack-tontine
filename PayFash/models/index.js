@@ -50,8 +50,11 @@ const {
     TontineSignature,
     TontineGarantie,
     TontineGarantieMouvement,
-    TontineConsentementGarantie
+    TontineConsentementGarantie,
+    TontineEvaluationEligibilite,
+    TontineIncidentDefaut
 } = tontine;
+const Restriction = require('./model.restriction');
 
 // Alias pour les relations
 const Projet = projet;
@@ -198,6 +201,10 @@ TontineGarantie.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 TontineGarantie.belongsTo(Portefeuille, { foreignKey: 'portefeuilleId', as: 'portefeuille' });
 TontineConsentementGarantie.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
+// Restrictions : des portes fermees sur un compte, pas le compte entier
+Client.hasMany(Restriction, { foreignKey: 'clientId', as: 'restrictions' });
+Restriction.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+
 module.exports = {
     Epargne,
     TransactionEpargne,
@@ -244,5 +251,8 @@ module.exports = {
     TontineSignature,
     TontineGarantie,
     TontineGarantieMouvement,
-    TontineConsentementGarantie
+    TontineConsentementGarantie,
+    TontineEvaluationEligibilite,
+    TontineIncidentDefaut,
+    Restriction
 };

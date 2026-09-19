@@ -114,6 +114,7 @@ const ACTES = {
     saisirCaution:      { roles: BUREAU, statuts: ACTIF,    libelle: 'saisir une caution',               expose: true },
     consulterCautions:  { roles: BUREAU, statuts: ACTIF,    libelle: 'consulter les cautions du groupe', expose: true },
     consulterGaranties: { roles: BUREAU, statuts: ACTIF,    libelle: 'consulter les garanties du groupe', expose: true },
+    consulterIncidents: { roles: BUREAU, statuts: TOUS,     libelle: 'consulter les incidents de defaut du groupe', expose: true },
     genererReglement:   { roles: BUREAU, statuts: ACTIF,    libelle: 'rediger le reglement interieur',   expose: true },
     verserPot:          { roles: BUREAU, statuts: ACTIF,    libelle: 'declencher le versement du pot',   expose: true },
     depouillerVote:     { roles: BUREAU, statuts: ACTIF,    libelle: 'depouiller un scrutin',            expose: true },

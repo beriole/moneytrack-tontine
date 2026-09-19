@@ -29,7 +29,7 @@ class GroupeService {
             nom, description, type, montantParPeriode,
             frequence = 'mensuelle', membresMax, modeOrdre = 'tirage',
             pourcentageCaution, bareme, modeAcces = 'prive', dateDebut,
-            cautionObligatoire = false, reglesCouverture
+            cautionObligatoire = false, reglesCouverture, politiqueRecouvrement
         } = donnees;
 
         if (!nom || !String(nom).trim()) throw new ErreurTontine(400, 'Le nom du groupe est obligatoire');
@@ -51,6 +51,10 @@ class GroupeService {
         // Nom de modele ('premiers_tours') ou regle explicite ; validee ici,
         // avant toute ecriture.
         const regles = CouvertureService.normaliser(reglesCouverture);
+        // Politique de recouvrement : proposee par defaut (caution, garanties,
+        // retenue sur le pot), modifiable ensuite par vote.
+        const politique = require('./politiqueRecouvrement').normaliser(politiqueRecouvrement);
+        await require('./eligibilite.service').exiger(clientId, 'creation');
 
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.create({
@@ -69,6 +73,7 @@ class GroupeService {
                 cautionObligatoire: cautionObligatoire === true || cautionObligatoire === 'true',
                 bareme: bareme || null,
                 reglesCouverture: regles,
+                politiqueRecouvrement: politique,
                 modeAcces,
                 codeInvitation: await this._codeLibre(t),
                 statut: 'en_attente',
@@ -212,6 +217,10 @@ class GroupeService {
             if (groupe.statut !== 'en_attente') {
                 throw new ErreurTontine(409, "Ce groupe a deja demarre : l'ordre de passage est fige");
             }
+
+            // Compte, niveau KYC, restrictions, defauts dans d'autres
+            // tontines : rejoindre n'etait conditionne qu'au code.
+            await require('./eligibilite.service').exiger(clientId, 'adhesion', { groupe, t });
 
             const dejaMembre = await TontineMembre.findOne({
                 where: { groupeId: groupe.id, clientId }, transaction: t

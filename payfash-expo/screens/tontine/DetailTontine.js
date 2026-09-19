@@ -11,7 +11,8 @@ import {
   mesAmendes, bloquerCaution, etatLiens, lierBudget, destinationsTour, routerTour,
   etatPrelevement, activerPrelevement, desactiverPrelevement,
   messageErreur, fcfa, dateCourte,
-  quitterGroupe, couvertureGroupe
+  quitterGroupe, couvertureGroupe, eligibiliteGroupe,
+  mesIncidents, politiqueRecouvrement
 } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
 
@@ -26,6 +27,9 @@ export default function DetailTontine() {
   const [liens, setLiens] = useState(null);
   const [mandat, setMandat] = useState(null);
   const [couverture, setCouverture] = useState(null);
+  const [eligibilite, setEligibilite] = useState(null);
+  const [incidents, setIncidents] = useState({ ouverts: [], totalDu: 0 });
+  const [politique, setPolitique] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [rafraichissement, setRafraichissement] = useState(false);
   const [action, setAction] = useState(false);
@@ -48,13 +52,27 @@ export default function DetailTontine() {
       setMandat(p);
       const { data: cv } = await couvertureGroupe(groupeId);
       setCouverture(cv);
+      // Les echeances que le recouvrement n'a pas couvertes, dans CE groupe.
+      const { data: inc } = await mesIncidents();
+      const ici = inc.ouverts.filter((i) => i.groupeId === Number(groupeId));
+      setIncidents({ ouverts: ici, totalDu: ici.reduce((t, i) => t + i.resteDu, 0) });
+      const { data: pol } = await politiqueRecouvrement(groupeId);
+      setPolitique(pol);
+      // Seulement pour qui attend encore son pot : les autres n'ont plus
+      // rien a recevoir.
+      if (d.groupe.statut === 'actif' && !d.groupe.membres?.find((m) => m.clientId === monId)?.aBeneficie) {
+        const { data: el } = await eligibiliteGroupe(groupeId, 'versement');
+        setEligibilite(el);
+      } else {
+        setEligibilite(null);
+      }
     } catch (e) {
       Alert.alert('Chargement impossible', messageErreur(e));
     } finally {
       setChargement(false);
       setRafraichissement(false);
     }
-  }, [groupeId]);
+  }, [groupeId, monId]);
 
   useFocusEffect(useCallback(() => { charger(); }, [charger]));
 
@@ -117,6 +135,15 @@ export default function DetailTontine() {
             <Alerte
               titre={`${mesDettes.nombreDues} amende${mesDettes.nombreDues > 1 ? 's' : ''} a regler`}
               texte={`${fcfa(mesDettes.totalDu)} dus. Tant qu'elles ne sont pas payees, vous ne pouvez pas cotiser. Touchez pour regler.`}
+            />
+          </TouchableOpacity>
+        )}
+
+        {incidents.ouverts.length > 0 && (
+          <TouchableOpacity onPress={() => navigation.navigate('MesIncidents')} activeOpacity={0.85}>
+            <Alerte
+              titre={`${incidents.ouverts.length} echeance${incidents.ouverts.length > 1 ? 's' : ''} a regulariser`}
+              texte={`${fcfa(incidents.totalDu)} restent dus apres votre caution et vos garanties. Tant qu'ils ne sont pas regles, vous ne pouvez ni recevoir de pot ni encherir. Touchez pour regler.`}
             />
           </TouchableOpacity>
         )}
@@ -355,6 +382,7 @@ export default function DetailTontine() {
             { icone: 'gavel', label: 'Votes et decisions', ecran: 'VotesTontine' },
             { icone: 'swap-horizontal', label: 'Echanges de tours', ecran: 'EchangeTour' },
             { icone: 'alert-octagon', label: 'Mes amendes', ecran: 'MesAmendes' },
+            { icone: 'clipboard-alert-outline', label: 'Echeances a regulariser', ecran: 'MesIncidents' },
             // Garantir ses cotisations futures : proposer tant que la tontine
             // court, et que l'adhesion permet d'agir.
             ...(actes.affecterGarantie && groupe.statut !== 'termine'
@@ -366,6 +394,29 @@ export default function DetailTontine() {
           groupeId={groupeId}
           navigation={navigation}
         />
+
+        {/* Recevoir son pot suppose que tout soit en regle : c'est ici qu'on
+            l'apprend, avant son tour plutot que le jour venu. */}
+        {eligibilite && eligibilite.resultat === 'NON_ELIGIBLE' && (
+          <Alerte
+            titre="Votre pot serait suspendu aujourd'hui"
+            texte={eligibilite.raisons.join('\n')}
+          />
+        )}
+        {eligibilite && eligibilite.resultat === 'ELIGIBLE' && (
+          <Info texte="Vous remplissez toutes les conditions pour recevoir votre pot le jour de votre tour." />
+        )}
+
+        {/* Ce qui se passe si une cotisation n'est pas payee : ecrit au
+            reglement, montre avant qu'il soit trop tard. */}
+        {politique && groupe.statut !== 'termine' && (
+          <>
+            <Text style={s.section}>En cas de retard</Text>
+            <View style={s.carte}>
+              <Text style={s.carteInfo}>{politique.description}</Text>
+            </View>
+          </>
+        )}
 
         {/* Avant son tour, le membre doit savoir s'il recevra le pot : un
             beneficiaire insuffisamment couvert voit son versement suspendu. */}

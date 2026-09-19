@@ -104,6 +104,11 @@ export const libererGarantie = (id) => api.post(`/tontine/garanties/${id}/libere
 export const garantiesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties`);
 // Ce que je couvre, ce que le reglement exige de moi, ce qui manque.
 export const couvertureGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/couverture`);
+// Pourrai-je recevoir mon pot ? Chaque controle, et ce qui manque.
+export const eligibiliteGroupe = (groupeId, operation = 'versement') =>
+  api.get(`/tontine/groupes/${groupeId}/eligibilite`, { params: { operation } });
+// Niveau de verification et restrictions du compte.
+export const maSituation = () => api.get('/tontine/moi/situation');
 export const transmettrePresidence = (groupeId, clientId, motif) =>
   api.post(`/tontine/groupes/${groupeId}/presidence`, { clientId, motif });
 
@@ -118,6 +123,13 @@ export const mesAmendes = (groupeId) => api.get('/tontine/amendes/mes-amendes', 
 export const amendesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/amendes`);
 export const payerAmende = (amendeId) => api.post(`/tontine/amendes/${amendeId}/payer`);
 export const infligerAmende = (groupeId, corps) => api.post(`/tontine/groupes/${groupeId}/amendes`, corps);
+
+// Defauts : ce que le recouvrement n'a pas couvert, et comment le regler.
+export const mesIncidents = () => api.get('/tontine/incidents/mes-incidents');
+export const incidentsGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/incidents`);
+export const politiqueRecouvrement = (groupeId) => api.get(`/tontine/groupes/${groupeId}/recouvrement`);
+export const regulariserCotisation = (cotisationId, montant) =>
+  api.post(`/tontine/cotisations/${cotisationId}/regulariser`, montant ? { montant } : {});
 
 export const mesCautions = () => api.get('/tontine/cautions/mes-cautions');
 export const bloquerCaution = (groupeId, montant) => api.post(`/tontine/groupes/${groupeId}/caution`, montant ? { montant } : {});

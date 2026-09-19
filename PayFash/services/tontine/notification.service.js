@@ -137,6 +137,25 @@ class NotificationTontineService {
         );
     }
 
+    static async retardConstate(clientId, groupe, cycle, recouvrableA) {
+        const quand = recouvrableA > new Date()
+            ? `Reglez-la avant le ${recouvrableA.toLocaleDateString('fr-FR')} : passe cette date, elle sera completee par vos garanties, selon le reglement du groupe.`
+            : 'Elle va etre completee par vos garanties, selon le reglement du groupe.';
+        await this.envoyer(
+            clientId,
+            `Votre cotisation du cycle ${cycle.numeroCycle} dans « ${groupe.nom} » est en retard. ${quand}`,
+            { type: 'alerte', lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } } }
+        );
+    }
+
+    static async incidentOuvert(clientId, groupe, reste) {
+        await this.envoyer(
+            clientId,
+            `Il reste ${fcfa(reste)} a regler sur une echeance de « ${groupe.nom} ». Tant qu'elle n'est pas reglee, vous ne pouvez ni recevoir de pot, ni encherir, ni rejoindre une tontine.`,
+            { type: 'alerte', lien: { ecran: 'MesIncidents', params: {} } }
+        );
+    }
+
     static async membreExclu(clientId, groupe, motif) {
         await this.envoyer(
             clientId,

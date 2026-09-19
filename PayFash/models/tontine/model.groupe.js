@@ -84,6 +84,16 @@ const TontineGroupe = db.define("TontineGroupe", {
             try { return JSON.parse(valeur); } catch (e) { return valeur; }
         }
     },
+    politiqueRecouvrement: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: "Ordre des sources et delai de grace ; null = ordre historique (caution, garanties)",
+        get() {
+            const valeur = this.getDataValue('politiqueRecouvrement');
+            if (typeof valeur !== 'string') return valeur;
+            try { return JSON.parse(valeur); } catch (e) { return valeur; }
+        }
+    },
     portefeuilleId: {
         type: DataTypes.INTEGER,
         allowNull: true,

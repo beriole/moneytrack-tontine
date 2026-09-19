@@ -42,7 +42,7 @@ class ContratService {
             `5. Amendes — retard : ${b.retard || 1000}, absence : ${b.absence || 2000}, indiscipline : ${b.indiscipline || 5000}.`,
             `6. Une amende indemnise le membre lese : elle grossit le pot du cycle concerne, ou revient a son beneficiaire si le pot est deja verse.`,
             `7. Une amende impayee bloque la cotisation suivante.`,
-            `8. En cas de defaut : amende de retard, puis saisie de la caution, puis exclusion votee.`,
+            `8. En cas de defaut : amende de retard. ${require('./politiqueRecouvrement').decrire(groupe)} L'exclusion reste une decision du president ou d'un vote.`,
             `9. Le versement du pot exige que toutes les cotisations du cycle soient soldees.`,
             `10. La caution est restituee une fois toutes les dettes eteintes.`,
             `11. ${require('./couverture.service').decrire(groupe, groupe.membresMax)} `

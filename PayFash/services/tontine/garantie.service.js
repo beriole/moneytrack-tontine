@@ -324,14 +324,15 @@ class GarantieService {
     // -----------------------------------------------------------------
     /**
      * Preleve `montant` sur les garanties actives d'un membre pour
-     * completer la caisse du groupe. Ne prend que le necessaire, garantie
+     * completer la caisse du groupe — ou `destination`, le portefeuille du
+     * beneficiaire lese quand le cycle est deja verse. Ne prend que le necessaire, garantie
      * par garantie, dans l'ordre d'affectation. Appele par le recouvrement
      * ({ systeme: true }) ; tourne dans la transaction de l'appelant.
      *
      * Renvoie le montant reellement mobilise, qui peut etre inferieur au
      * besoin si les garanties ne suffisent pas.
      */
-    static async mobiliserDans(acteur, clientId, groupe, besoin, motif, t) {
+    static async mobiliserDans(acteur, clientId, groupe, besoin, motif, t, destination = null) {
         let reste = arrondir(besoin);
         if (reste <= 0) return { mobilise: 0, mouvements: [] };
         exigerGroupeNonGele(groupe, "la mobilisation d'une garantie");
@@ -342,7 +343,7 @@ class GarantieService {
         });
         if (!garanties.length) return { mobilise: 0, mouvements: [] };
 
-        const caisse = await caisseGroupe(groupe, t, true);
+        const caisse = destination || await caisseGroupe(groupe, t, true);
         const mouvements = [];
         let mobilise = 0;
 
@@ -422,6 +423,9 @@ class GarantieService {
             exigerGroupeNonGele(groupe, "la liberation d'une garantie");
 
             if (!acteur.systeme) {
+                const { RestrictionService } = require('../restriction.service');
+                const r = await RestrictionService.active(g.clientId, 'WITHDRAW_GUARANTEE_DISABLED', t);
+                if (r) throw new ErreurTontine(403, `Reprise de garantie suspendue : ${r.motif}`);
                 const membre = await TontineMembre.findByPk(g.membreId, { transaction: t });
                 // L'exclusion n'en fait PAS partie. Un membre exclu sort de la
                 // rotation : son exposition calculee tombe a zero. S'il avait

@@ -123,18 +123,11 @@ class CycleService {
                 `Cotisation ${groupe.nom} — cycle ${cycle.numeroCycle}`, t
             );
 
-            const total = arrondir(dejaPaye + aVerser);
-            const solde = total >= nombre(cotisation.montantDu);
-            await cotisation.update({
-                montantPaye: total,
-                statut: solde ? 'payee' : 'partielle',
-                datePaiement: solde ? new Date() : cotisation.datePaiement,
-                transactionId: transaction.id
-            }, { transaction: t });
-
-            await cycle.update({
-                montantCollecte: arrondir(nombre(cycle.montantCollecte) + aVerser)
-            }, { transaction: t });
+            // Imputation commune avec le recouvrement : statut (une
+            // cotisation echue reglee en partie reste echue), incident de
+            // defaut, sortie du defaut du cycle quand le pot se complete.
+            await require('./defaut.service').imputer(cotisation, cycle, aVerser, 'membre', t,
+                { transactionId: transaction.id });
 
             const restantes = await TontineCotisation.count({
                 where: { cycleId: cycle.id, statut: { [Op.ne]: 'payee' } }, transaction: t
@@ -261,23 +254,36 @@ class CycleService {
                 throw new ErreurTontine(409, `Pot incomplet : ${impayees.length} cotisation(s) non soldee(s) — ${noms}`);
             }
 
-            // --- Couverture du beneficiaire -------------------------------
+            // --- Retenue sur le pot ---------------------------------------
+            // Si le reglement la prevoit, les cotisations que le beneficiaire
+            // doit encore dans CE groupe sont prelevees sur son pot et vont a
+            // ceux qu'elles ont leses. Avant l'eligibilite, qui le refuserait
+            // sinon pour ces memes dettes ; tout est annule si elle refuse.
+            let retenue = { total: 0, lignes: [] };
+            if (!force) {
+                const caisseAvant = await caisseGroupe(groupe, t, true);
+                if (arrondir(caisseAvant.solde) >= arrondir(cycle.montantAttendu)) {
+                    retenue = await require('./defaut.service').retenirSurPot(cycle, groupe, caisseAvant, t);
+                }
+            }
+
+            // --- Eligibilite du beneficiaire ------------------------------
             // Le moment critique : une fois le pot recu, le beneficiaire n'a
-            // plus d'interet a cotiser. Si le reglement exige qu'il garantisse
-            // une part de ce qui lui restera a payer, c'est ici, dans la
-            // transaction du versement, que la regle se verifie — sur des
-            // chiffres relus a l'instant, pas sur une analyse anterieure.
+            // plus d'interet a cotiser. Tout est revu ICI, dans la transaction
+            // du versement, sur des chiffres relus a l'instant et non sur une
+            // analyse anterieure : compte, niveau KYC, restrictions, defauts
+            // dans ses autres tontines, reglement signe, couverture.
             //
             // Le versement force (maker-checker, deux administrateurs) passe
             // outre : c'est la procedure exceptionnelle, auditee.
             if (!force) {
-                const CouvertureService = require('./couverture.service');
-                await CouvertureService.exigerPourVersement(cycle.beneficiaireId, groupe, t);
+                const EligibiliteService = require('./eligibilite.service');
+                await EligibiliteService.exiger(cycle.beneficiaireId, 'versement', { groupe, cycle, t });
             }
 
             const caisse = await caisseGroupe(groupe, t, true);
             const attendu = arrondir(cycle.montantAttendu);
-            if (arrondir(caisse.solde) < attendu && !force) {
+            if (arrondir(caisse.solde) + retenue.total < attendu && !force) {
                 throw new ErreurTontine(409, `Caisse insuffisante : ${arrondir(caisse.solde)} disponible, ${attendu} requis`);
             }
             if (force && arrondir(caisse.solde) <= 0) {
@@ -313,7 +319,7 @@ class CycleService {
             // c'est exactement l'indemnisation du beneficiaire lese par un
             // retard. Cautions et epargne vivent dans d'autres portefeuilles.
             const pot = arrondir(caisse.solde);
-            const bonusAmendes = arrondir(pot - attendu);
+            const bonusAmendes = arrondir(Math.max(0, pot + retenue.total - attendu));
 
             // --- Frais de plateforme ------------------------------------
             // Resolus AVANT tout mouvement : sans compte d'arrivee, on ne
@@ -423,7 +429,7 @@ class CycleService {
                 details: {
                     groupeId: groupe.id,
                     beneficiaireId: cycle.beneficiaireId,
-                    pot, potAttendu: attendu, net, frais, decote, manque,
+                    pot, potAttendu: attendu, net, frais, decote, manque, retenue: retenue.total,
                     cotisationsImpayees: force ? impayees.length : 0,
                     destination: destinationChoisie ? destinationChoisie.id : null
                 },
@@ -442,6 +448,8 @@ class CycleService {
                 manque,
                 cotisationsImpayees: force ? impayees.length : 0,
                 bonusAmendes,
+                retenue: retenue.total,
+                retenues: retenue.lignes,
                 decote,
                 partDecote,
                 frais,
@@ -510,6 +518,9 @@ class CycleService {
                     where: { groupeId: groupe.id, clientId, statut: 'due' }, transaction: t
                 });
                 if (dues > 0) continue;
+                // Une cotisation echue non soldee survit a la rotation : la
+                // garantie reste mobilisable pour elle.
+                if (await require('./defaut.service').doitEncore(clientId, groupe.id, t)) continue;
                 await GarantieService.libererToutesDans({ systeme: true }, clientId, groupe.id,
                     'Fin de la rotation : plus aucune cotisation a garantir', t);
             }
@@ -539,189 +550,30 @@ class CycleService {
     }
 
     // -----------------------------------------------------------------
-    //  Couverture d'un impaye par les garanties du membre
+    //  Defauts — voir defaut.service.js
     // -----------------------------------------------------------------
     /**
-     * Complete une cotisation impayee en mobilisant les garanties de son
-     * debiteur — le montant manquant, pas un franc de plus. L'argent passe
-     * de la part bloquee de son portefeuille a la caisse du groupe, et la
-     * cotisation est creditee d'autant, dans une seule transaction.
+     * Complete une cotisation impayee par les seules garanties de son
+     * debiteur. Conservee pour les appels existants ; le moteur de defaut
+     * enchaine lui-meme les sources dans l'ordre du reglement.
      */
     static async couvrirParGaranties(cotisationId, acteur = { systeme: true }) {
-        const GarantieService = require('./garantie.service');
-        return db.transaction(async (t) => {
-            const cotisation = await TontineCotisation.findByPk(cotisationId, { transaction: t, lock: t.LOCK.UPDATE });
-            if (!cotisation) throw new ErreurTontine(404, 'Cotisation introuvable');
-            if (cotisation.statut === 'payee') return { mobilise: 0, cotisationSoldee: true };
-
-            const cycle = await TontineCycle.findByPk(cotisation.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
-            const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
-
-            const reste = arrondir(nombre(cotisation.montantDu) - nombre(cotisation.montantPaye));
-            const r = await GarantieService.mobiliserDans(acteur, cotisation.clientId, groupe, reste,
-                `cotisation du cycle ${cycle.numeroCycle} impayee a l'echeance`, t);
-            if (r.mobilise <= 0) return { mobilise: 0, cotisationSoldee: false, resteACouvrir: reste };
-
-            const paye = arrondir(nombre(cotisation.montantPaye) + r.mobilise);
-            const soldee = paye >= nombre(cotisation.montantDu);
-            await cotisation.update({
-                montantPaye: paye,
-                statut: soldee ? 'payee' : 'partielle',
-                datePaiement: soldee ? new Date() : cotisation.datePaiement
-            }, { transaction: t });
-            await cycle.update({
-                montantCollecte: arrondir(nombre(cycle.montantCollecte) + r.mobilise)
-            }, { transaction: t });
-
-            return {
-                mobilise: r.mobilise,
-                cotisationSoldee: soldee,
-                resteACouvrir: arrondir(nombre(cotisation.montantDu) - paye),
-                clientId: cotisation.clientId,
-                groupe
-            };
-        }).then(async (r) => {
-            if (r.mobilise > 0) {
-                try {
-                    const NotificationService = require('./notification.service');
-                    await NotificationService.garantieMobilisee(r.clientId, r.groupe, r.mobilise);
-                } catch (e) {
-                    console.log('[tontine] notification de mobilisation non envoyee :', e.message);
-                }
-            }
-            return r;
-        });
+        const r = await require('./defaut.service').recouvrer(cotisationId, { acteur, sources: ['garanties'] });
+        return {
+            mobilise: r.mobilise,
+            cotisationSoldee: r.cotisationSoldee,
+            resteACouvrir: r.resteACouvrir,
+            clientId: r.clientId,
+            groupe: r.groupe
+        };
     }
 
-    // -----------------------------------------------------------------
-    //  Echeances (appele par le cron)
-    // -----------------------------------------------------------------
     /**
-     * A l'echeance, le cron NE VERSE PAS. Il constate, sanctionne, et
-     * mobilise la garantie deja constituee.
-     *
-     * NjanguiPay completait et payait tout cycle dont la date etait
-     * depassee, quel que soit l'etat des cotisations. Dans une vraie
-     * tontine, une echeance atteinte avec un pot incomplet ouvre la
-     * procedure de discipline, elle ne declenche pas un versement
-     * silencieux. Le versement reste donc explicite.
-     *
-     * La saisie de caution, elle, est passee du cote du systeme. Elle
-     * attendait qu'une personne du bureau la declenche : la caution etait
-     * bloquee pour exactement ce cas, le montant est ecrit dans le
-     * reglement, et rien ne s'y decide — le seul effet de l'attente etait
-     * qu'un pot reste incomplet pendant que la garantie dormait. Elle ne
-     * prend que ce qui manque, et laisse le reste bloque.
-     *
-     * Elle reste actionnable a la main : un bureau qui veut saisir avant
-     * l'echeance le peut toujours.
+     * Echeances, appele par le planificateur : constat, grace, recouvrement
+     * selon la politique du groupe, incidents. Le versement reste explicite.
      */
     static async traiterEcheances(maintenant = new Date()) {
-        const { AmendeService } = require('./amende.service');
-        const CautionService = require('./caution.service');
-
-        const cycles = await TontineCycle.findAll({
-            where: { statut: 'actif', dateFinPrevue: { [Op.lte]: maintenant } }
-        });
-
-        const rapport = {
-            examines: cycles.length, enDefaut: 0, prets: 0,
-            cotisationsEnRetard: 0, amendesLevees: 0,
-            cautionsSaisies: 0, montantRecouvre: 0, cotisationsSoldeesParCaution: 0,
-            garantiesMobilisees: 0, montantGaranties: 0, cotisationsSoldeesParGarantie: 0
-        };
-
-        for (const cycle of cycles) {
-            await db.transaction(async (t) => {
-                const impayees = await TontineCotisation.findAll({
-                    where: { cycleId: cycle.id, statut: { [Op.in]: ['attendue', 'partielle', 'en_retard'] } },
-                    transaction: t, lock: t.LOCK.UPDATE
-                });
-
-                if (!impayees.length) {
-                    rapport.prets++;   // pot complet : le versement reste explicite
-                    return;
-                }
-
-                for (const c of impayees) {
-                    if (c.statut !== 'en_retard') {
-                        await c.update({ statut: 'en_retard' }, { transaction: t });
-                        rapport.cotisationsEnRetard++;
-                    }
-                }
-
-                // Caisse 4 : le retard coute une amende, une seule par cycle
-                // et par membre. C'est la sanction, pas le versement, qui
-                // suit l'echeance.
-                const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t });
-                rapport.amendesLevees += await AmendeService.leverPourRetard(cycle, groupe, impayees, t);
-
-                await cycle.update({ statut: 'en_defaut' }, { transaction: t });
-                rapport.enDefaut++;
-            });
-
-            // La saisie ouvre sa propre transaction, apres celle du constat :
-            // CautionService verrouille les memes lignes, et les imbriquer
-            // bloquerait. Chaque saisie est independante — l'echec de l'une
-            // ne doit pas empecher les autres.
-            const aCouvrir = await TontineCotisation.findAll({
-                where: { cycleId: cycle.id, statut: { [Op.in]: ['en_retard', 'partielle'] } }
-            });
-            for (const c of aCouvrir) {
-                try {
-                    const r = await CautionService.saisirPourCotisation({ systeme: true }, c.id);
-                    rapport.cautionsSaisies++;
-                    rapport.montantRecouvre = arrondir(rapport.montantRecouvre + r.montantSaisi);
-                    if (r.cotisationSoldee) rapport.cotisationsSoldeesParCaution++;
-                } catch (e) {
-                    // Pas de caution, deja consommee, groupe gele : autant de
-                    // cas normaux. Le retard reste constate, la dette aussi.
-                    if (!(e instanceof ErreurTontine)) {
-                        console.log('[tontine] saisie automatique en echec :', e.message);
-                    }
-                }
-            }
-
-            // Puis les garanties. L'ordre est celui de la proximite de
-            // l'argent : la caution est deja au sequestre du groupe, la
-            // garantie est encore sur le portefeuille du membre. Chacune ne
-            // prend que ce qui manque apres la precedente.
-            const restantes = await TontineCotisation.findAll({
-                where: { cycleId: cycle.id, statut: { [Op.in]: ['en_retard', 'partielle'] } }
-            });
-            for (const c of restantes) {
-                try {
-                    const r = await this.couvrirParGaranties(c.id);
-                    if (r.mobilise > 0) {
-                        rapport.garantiesMobilisees++;
-                        rapport.montantGaranties = arrondir(rapport.montantGaranties + r.mobilise);
-                        rapport.montantRecouvre = arrondir(rapport.montantRecouvre + r.mobilise);
-                        if (r.cotisationSoldee) rapport.cotisationsSoldeesParGarantie++;
-                    }
-                } catch (e) {
-                    if (!(e instanceof ErreurTontine)) {
-                        console.log('[tontine] mobilisation de garantie en echec :', e.message);
-                    }
-                }
-            }
-
-            // Si les saisies ont tout couvert, le cycle n'est plus en defaut :
-            // le pot est complet et le versement peut avoir lieu. Le laisser
-            // au statut 'en_defaut' decrirait un etat qui n'existe plus, et
-            // ferait passer pour defaillant un cycle integralement finance.
-            if (rapport.cotisationsSoldeesParCaution > 0 || rapport.cotisationsSoldeesParGarantie > 0) {
-                const reste = await TontineCotisation.count({
-                    where: { cycleId: cycle.id, statut: { [Op.ne]: 'payee' } }
-                });
-                if (reste === 0) {
-                    await cycle.update({ statut: 'actif' });
-                    rapport.enDefaut--;
-                    rapport.prets++;
-                }
-            }
-        }
-
-        return rapport;
+        return require('./defaut.service').traiterEcheances(maintenant);
     }
 }
 

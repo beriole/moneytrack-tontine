@@ -29,6 +29,8 @@ const TontineSignature = require('./model.signature');
 const TontineGarantie = require('./model.garantie');
 const TontineGarantieMouvement = require('./model.garantieMouvement');
 const TontineConsentementGarantie = require('./model.consentementGarantie');
+const TontineEvaluationEligibilite = require('./model.evaluationEligibilite');
+const TontineIncidentDefaut = require('./model.incidentDefaut');
 
 // ---------------------------------------------------------------
 //  Caisse 1 — le tour
@@ -104,6 +106,11 @@ TontineContrat.hasMany(TontineSignature, { foreignKey: 'contratId', as: 'signatu
 TontineSignature.belongsTo(TontineContrat, { foreignKey: 'contratId', as: 'contrat' });
 TontineContrat.belongsTo(TontineContrat, { foreignKey: 'contratAmendeId', as: 'versionPrecedente' });
 
+// Incidents de defaut : ce que le recouvrement n'a pas couvert
+TontineGroupe.hasMany(TontineIncidentDefaut, { foreignKey: 'groupeId', as: 'incidents', onDelete: 'CASCADE', hooks: true });
+TontineIncidentDefaut.belongsTo(TontineCotisation, { foreignKey: 'cotisationId', as: 'cotisation' });
+TontineIncidentDefaut.belongsTo(TontineCycle, { foreignKey: 'cycleId', as: 'cycle' });
+
 module.exports = {
     TontineGroupe,
     TontineMembre,
@@ -119,5 +126,7 @@ module.exports = {
     TontineSignature,
     TontineGarantie,
     TontineGarantieMouvement,
-    TontineConsentementGarantie
+    TontineConsentementGarantie,
+    TontineEvaluationEligibilite,
+    TontineIncidentDefaut
 };

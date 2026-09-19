@@ -1,6 +1,10 @@
 const CautionService = require('../../services/tontine/caution.service');
 const { AmendeService } = require('../../services/tontine/amende.service');
 const RecouvrementService = require('../../services/tontine/recouvrement.service');
+const DefautService = require('../../services/tontine/defaut.service');
+const Politique = require('../../services/tontine/politiqueRecouvrement');
+const { exigerRole } = require('../../services/tontine/commun');
+const { TontineGroupe } = require('../../models');
 const { repondreErreur } = require('./tontine.groupe');
 
 // =====================================================================
@@ -128,7 +132,50 @@ const exclure = async (req, res) => {
     } catch (e) { return repondreErreur(res, e); }
 };
 
+// --- Defauts -----------------------------------------------------------
+
+// GET /tontine/incidents/mes-incidents
+const mesIncidents = async (req, res) => {
+    try {
+        return res.status(200).json(await DefautService.mesIncidents(req.user.id));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/groupes/:groupeId/incidents
+const incidentsGroupe = async (req, res) => {
+    try {
+        return res.status(200).json(await DefautService.incidentsGroupe(req.user.id, req.params.groupeId));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/groupes/:groupeId/recouvrement — la politique, pour tout membre
+const politiqueRecouvrement = async (req, res) => {
+    try {
+        await exigerRole(req.params.groupeId, req.user.id, [], null);
+        const groupe = await TontineGroupe.findByPk(req.params.groupeId);
+        return res.status(200).json({
+            ...Politique.de(groupe),
+            description: Politique.decrire(groupe),
+            sources: Politique.sources()
+        });
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// POST /tontine/cotisations/:cotisationId/regulariser   { montant? }
+const regulariser = async (req, res) => {
+    try {
+        const r = await DefautService.regulariser(req.user.id, req.params.cotisationId, req.body && req.body.montant);
+        return res.status(200).json({
+            message: r.soldee
+                ? `Cotisation regularisee : ${r.montant} FCFA. Vous ne devez plus rien sur cette echeance.`
+                : `${r.montant} FCFA regles. Il reste ${r.resteDu} FCFA a regler.`,
+            ...r
+        });
+    } catch (e) { return repondreErreur(res, e); }
+};
+
 module.exports = {
+    mesIncidents, incidentsGroupe, politiqueRecouvrement, regulariser,
     bloquerCaution, mesCautions, cautionsGroupe, libererCaution,
     infligerAmende, mesAmendes, amendesGroupe, payerAmende, annulerAmende,
     etatRecouvrement, saisirCaution, exclure

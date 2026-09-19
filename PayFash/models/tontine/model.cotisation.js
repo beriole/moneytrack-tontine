@@ -27,6 +27,12 @@ const TontineCotisation = db.define("TontineCotisation", {
         allowNull: false,
         defaultValue: 0
     },
+    montantRecouvre: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Part de montantPaye obtenue par recouvrement (caution, garantie, retenue sur pot)"
+    },
     statut: {
         type: DataTypes.ENUM('attendue', 'payee', 'partielle', 'en_retard', 'impayee'),
         allowNull: false,

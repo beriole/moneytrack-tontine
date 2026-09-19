@@ -49,6 +49,9 @@ export const statutCouleur = {
   gagnante: colors.success,
   perdante: colors.textMuted,
   retiree: colors.textMuted,
+  // Incidents de defaut
+  ouvert: colors.danger,
+  regle: colors.success,
 };
 
 export const libelleStatut = {
@@ -78,6 +81,8 @@ export const libelleStatut = {
   gagnante: 'Gagnante',
   perdante: 'Perdante',
   retiree: 'Retiree',
+  ouvert: 'A regler',
+  regle: 'Regle',
 };
 
 export default StyleSheet.create({

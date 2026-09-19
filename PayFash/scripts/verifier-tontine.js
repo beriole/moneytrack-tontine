@@ -4,7 +4,7 @@
 //
 //  Usage :  node scripts/verifier-tontine.js
 //
-//  Partie A (hors base)  : definitions des 15 modeles et associations.
+//  Partie A (hors base)  : definitions des 17 modeles et associations.
 //  Partie B (avec base)  : derive entre les modeles et le schema reel.
 //     Repond a "peut-on rester en alter:false sans casser l'existant ?".
 //     Ignoree proprement si MySQL n'est pas joignable.
@@ -22,8 +22,8 @@ let erreurs = 0;
 function verifierDefinitions() {
     const noms = Object.keys(models).filter(k => k.startsWith('Tontine'));
 
-    console.log('=== MODELES TONTINE (' + noms.length + '/15) ===');
-    if (noms.length !== 15) erreurs++;
+    console.log('=== MODELES TONTINE (' + noms.length + '/17) ===');
+    if (noms.length !== 17) erreurs++;
     for (const nom of noms) {
         const M = models[nom];
         const nbCol = Object.keys(M.rawAttributes).length;
@@ -43,7 +43,8 @@ function verifierDefinitions() {
         ['TontineAmende', 'auteur'], ['TontineCaution', 'membre'],
         ['TontineVote', 'reponses'],
         ['TontineGarantie', 'mouvements'], ['TontineGarantie', 'consentement'], ['TontineGarantie', 'portefeuille'],
-        ['TontineContrat', 'signatures']
+        ['TontineContrat', 'signatures'],
+        ['TontineGroupe', 'incidents'], ['TontineIncidentDefaut', 'cotisation']
     ];
     let manquantes = 0;
     for (const [modele, alias] of attendues) {
@@ -123,7 +124,7 @@ async function verifierDerive() {
         }
     }
 
-    console.log('  Tables tontine deja creees        : ' + tontineDejaLa + '/15');
+    console.log('  Tables tontine deja creees        : ' + tontineDejaLa + '/17');
     console.log('  Tables du noyau absentes          : ' + tablesAbsentes);
     console.log('  Colonnes du noyau absentes        : ' + colonnesAbsentes);
     if (tablesAbsentes + colonnesAbsentes === 0) {

@@ -105,106 +105,84 @@ class CautionService {
     // -----------------------------------------------------------------
     /**
      * Saisit tout ou partie d'une caution pour couvrir une cotisation
-     * impayee. L'argent va du sequestre vers la caisse du groupe : le pot
-     * se complete, et le cycle peut se verser normalement.
-     *
-     * C'est le premier cran de la cascade de recours, apres l'amende.
+     * impayee — geste du bureau, possible avant l'echeance. Le calcul et
+     * l'imputation sont ceux du moteur de defaut, source 'caution' seule.
      */
     static async saisirPourCotisation(acteur, cotisationId) {
-        return db.transaction(async (t) => {
-            const cotisation = await TontineCotisation.findByPk(cotisationId, {
-                transaction: t, lock: t.LOCK.UPDATE
-            });
-            if (!cotisation) throw new ErreurTontine(404, 'Cotisation introuvable');
-            if (cotisation.statut === 'payee') throw new ErreurTontine(409, 'Cette cotisation est deja soldee');
+        const DefautService = require('./defaut.service');
+        const r = await DefautService.recouvrer(cotisationId, {
+            acteur, sources: ['caution'], acte: 'saisirCaution', strict: true
+        });
+        return {
+            cotisation: r.cotisation,
+            montantSaisi: r.mobilise,
+            cotisationSoldee: r.cotisationSoldee,
+            resteAcouvrir: r.resteACouvrir
+        };
+    }
 
-            const cycle = await TontineCycle.findByPk(cotisation.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
-            const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
-            exigerGroupeNonGele(groupe, "la saisie d'une caution");
+    /**
+     * Preleve sur la caution du debiteur, au plus `besoin`, vers
+     * `destination` — la caisse si le cycle n'est pas verse, le
+     * beneficiaire lese s'il l'est. Tourne dans la transaction du moteur
+     * de defaut, qui impute ensuite le montant sur la cotisation.
+     *
+     * `strict` : geste manuel, qui doit dire pourquoi il ne prend rien.
+     */
+    static async preleverDans(acteur, groupe, cotisation, cycle, besoin, destination, t, strict = false) {
+        const caution = await TontineCaution.findOne({
+            where: { groupeId: groupe.id, clientId: cotisation.clientId },
+            transaction: t, lock: t.LOCK.UPDATE
+        });
+        if (!caution) {
+            if (strict) throw new ErreurTontine(409, "Ce membre n'a aucune caution bloquee");
+            return 0;
+        }
+        const dispo = this.disponible(caution);
+        if (dispo <= 0) {
+            if (strict) throw new ErreurTontine(409, 'La caution de ce membre est deja entierement consommee');
+            return 0;
+        }
+        const saisi = Math.min(dispo, arrondir(besoin));
+        if (saisi <= 0) return 0;
 
-            if (!acteur.systeme) {
-                await exigerActe('saisirCaution', groupe.id, acteur.clientId, t);
-            }
+        const sequestre = await portefeuilleCaution(groupe, t, true);
+        await transferer(sequestre, destination, saisi, t);
 
-            const caution = await TontineCaution.findOne({
-                where: { groupeId: groupe.id, clientId: cotisation.clientId },
-                transaction: t, lock: t.LOCK.UPDATE
-            });
-            if (!caution) throw new ErreurTontine(409, "Ce membre n'a aucune caution bloquee");
+        await ecrireTransaction({
+            montant: saisi,
+            type: 'caution_saisie',
+            description: `Caution saisie pour la cotisation du cycle ${cycle.numeroCycle} — ${groupe.nom}`,
+            clientId: cotisation.clientId,
+            groupeId: groupe.id,
+            cycleId: cycle.id,
+            reference: `TNT-CAU-S-${cotisation.id}-${nombre(caution.montantUtilise)}`
+        }, t);
 
-            const dispo = this.disponible(caution);
-            if (dispo <= 0) throw new ErreurTontine(409, 'La caution de ce membre est deja entierement consommee');
+        const utilise = arrondir(nombre(caution.montantUtilise) + saisi);
+        await caution.update({
+            montantUtilise: utilise,
+            statut: utilise >= nombre(caution.montantBloque) ? 'totalement_utilisee' : 'partiellement_utilisee'
+        }, { transaction: t });
 
-            const reste = arrondir(nombre(cotisation.montantDu) - nombre(cotisation.montantPaye));
-            const saisi = Math.min(dispo, reste);
-
-            const sequestre = await portefeuilleCaution(groupe, t, true);
-            const caisse = await caisseGroupe(groupe, t, true);
-            await transferer(sequestre, caisse, saisi, t);
-
-            const transaction = await ecrireTransaction({
-                montant: saisi,
-                type: 'caution_saisie',
-                description: `Caution saisie pour la cotisation du cycle ${cycle.numeroCycle} — ${groupe.nom}`,
-                clientId: cotisation.clientId,
+        // Mobiliser la garantie de quelqu'un se justifie : qui l'a
+        // decide, pour quel impaye, et pour combien.
+        await journaliser({
+            acteur: acteur.systeme ? { systeme: true } : { clientId: acteur.clientId },
+            action: 'TONTINE_CAUTION_SAISIE',
+            cible: `TontineCaution#${caution.id}`,
+            details: {
                 groupeId: groupe.id,
                 cycleId: cycle.id,
-                reference: `TNT-CAU-S-${cotisation.id}-${nombre(caution.montantUtilise)}`
-            }, t);
-
-            const utilise = arrondir(nombre(caution.montantUtilise) + saisi);
-            await caution.update({
-                montantUtilise: utilise,
-                statut: utilise >= nombre(caution.montantBloque) ? 'totalement_utilisee' : 'partiellement_utilisee'
-            }, { transaction: t });
-
-            const paye = arrondir(nombre(cotisation.montantPaye) + saisi);
-            const solde = paye >= nombre(cotisation.montantDu);
-            await cotisation.update({
-                montantPaye: paye,
-                statut: solde ? 'payee' : 'partielle',
-                datePaiement: solde ? new Date() : cotisation.datePaiement,
-                transactionId: transaction.id
-            }, { transaction: t });
-
-            await cycle.update({
-                montantCollecte: arrondir(nombre(cycle.montantCollecte) + saisi)
-            }, { transaction: t });
-
-            // Mobiliser la garantie de quelqu'un se justifie : qui l'a
-            // decide, pour quel impaye, et pour combien.
-            await journaliser({
-                acteur: acteur.systeme ? { systeme: true } : { clientId: acteur.clientId },
-                action: 'TONTINE_CAUTION_SAISIE',
-                cible: `TontineCaution#${caution.id}`,
-                details: {
-                    groupeId: groupe.id,
-                    cycleId: cycle.id,
-                    cotisationId: cotisation.id,
-                    clientVise: cotisation.clientId,
-                    montantSaisi: saisi,
-                    disponibleAvant: dispo,
-                    cotisationSoldee: solde
-                },
-                transaction: t
-            });
-
-            return {
-                caution, cotisation, transaction,
-                groupeSaisi: groupe,
+                cotisationId: cotisation.id,
+                clientVise: cotisation.clientId,
                 montantSaisi: saisi,
-                cotisationSoldee: solde,
-                resteAcouvrir: arrondir(nombre(cotisation.montantDu) - paye)
-            };
-        }).then(async (r) => {
-            try {
-                const NotificationService = require('./notification.service');
-                await NotificationService.cautionSaisie(r.cotisation.clientId, r.groupeSaisi, r.montantSaisi);
-            } catch (e) {
-                console.log('[tontine] notification de saisie non envoyee :', e.message);
-            }
-            return r;
+                disponibleAvant: dispo,
+                versCaisse: destination.id === groupe.portefeuilleId
+            },
+            transaction: t
         });
+        return saisi;
     }
 
     // -----------------------------------------------------------------

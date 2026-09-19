@@ -27,7 +27,7 @@ const CHOIX = ['pour', 'contre', 'abstention'];
 // La destination des amendes n'en fait plus partie : elles indemnisent
 // toujours le membre lese (voir amende.service.js), il n'y a plus de
 // caisse d'epargne vers laquelle les detourner.
-const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'membresMax', 'reglesCouverture'];
+const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'membresMax', 'reglesCouverture', 'politiqueRecouvrement'];
 
 class VoteService {
 
@@ -73,6 +73,9 @@ class VoteService {
                 // l'ouverture du scrutin, pas decouverte a son application.
                 if (Object.prototype.hasOwnProperty.call(payload, 'reglesCouverture')) {
                     require('./couverture.service').normaliser(payload.reglesCouverture);
+                }
+                if (Object.prototype.hasOwnProperty.call(payload, 'politiqueRecouvrement')) {
+                    require('./politiqueRecouvrement').normaliser(payload.politiqueRecouvrement);
                 }
             }
 
@@ -296,6 +299,9 @@ class VoteService {
                 }
                 if (Object.prototype.hasOwnProperty.call(modifs, 'reglesCouverture')) {
                     modifs.reglesCouverture = require('./couverture.service').normaliser(modifs.reglesCouverture);
+                }
+                if (Object.prototype.hasOwnProperty.call(modifs, 'politiqueRecouvrement')) {
+                    modifs.politiqueRecouvrement = require('./politiqueRecouvrement').normaliser(modifs.politiqueRecouvrement);
                 }
                 await groupe.update(modifs, { transaction: t });
                 return {

@@ -62,6 +62,12 @@ route.post("/groupes/:groupeId/exclure", verifyToken, DISC.exclure);
 route.get("/cotisations/:cotisationId/recouvrement", verifyToken, DISC.etatRecouvrement);
 route.post("/cotisations/:cotisationId/saisir-caution", verifyToken, DISC.saisirCaution);
 
+// --- Defauts : politique de recouvrement, incidents, regularisation ---
+route.get("/incidents/mes-incidents", verifyToken, DISC.mesIncidents);
+route.get("/groupes/:groupeId/incidents", verifyToken, DISC.incidentsGroupe);
+route.get("/groupes/:groupeId/recouvrement", verifyToken, DISC.politiqueRecouvrement);
+route.post("/cotisations/:cotisationId/regulariser", verifyToken, DISC.regulariser);
+
 // =====================================================================
 //  Gouvernance
 // =====================================================================
@@ -106,11 +112,13 @@ route.get("/groupes/:groupeId/reglement", verifyToken, GOUV.reglementCourant);
 // =====================================================================
 route.get("/moi/exposition", verifyToken, GAR.monExposition);
 route.get("/regles-couverture", verifyToken, GAR.modelesCouverture);
+route.get("/moi/situation", verifyToken, GAR.maSituation);
 route.get("/garanties", verifyToken, GAR.mesGaranties);
 route.get("/garanties/:garantieId", verifyToken, GAR.detail);
 route.post("/garanties/:garantieId/liberer", verifyToken, GAR.liberer);
 route.get("/groupes/:groupeId/exposition", verifyToken, GAR.expositionGroupe);
 route.get("/groupes/:groupeId/couverture", verifyToken, GAR.couvertureGroupe);
+route.get("/groupes/:groupeId/eligibilite", verifyToken, GAR.eligibilite);
 route.get("/groupes/:groupeId/garanties/sources", verifyToken, GAR.sources);
 route.get("/groupes/:groupeId/garanties/simulation", verifyToken, GAR.simulation);
 route.get("/groupes/:groupeId/garanties", verifyToken, GAR.garantiesGroupe);
