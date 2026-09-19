@@ -3,8 +3,7 @@ const { fn, col, Op } = require('sequelize');
 const {
     db, Client, Portefeuille, Transaction,
     TontineGroupe, TontineMembre, TontineCycle, TontineCotisation,
-    TontineAmende, TontineCaution, TontinePoolCredit, TontineDemandeCredit,
-    TontineVote, TontinePartage
+    TontineAmende, TontineCaution, TontineVote
 } = require('../../models/index');
 const { logAction } = require('./audit');
 
@@ -31,7 +30,7 @@ const stats = async (req, res) => {
             groupes, actifs, enAttente, termines,
             membres, cycles, cyclesEnDefaut,
             cotisations, cotisationsImpayees,
-            amendesDues, cautionsBloquees, credits, nouveaux30j
+            amendesDues, cautionsBloquees, nouveaux30j
         ] = await Promise.all([
             TontineGroupe.count(),
             TontineGroupe.count({ where: { statut: 'actif' } }),
@@ -44,7 +43,6 @@ const stats = async (req, res) => {
             TontineCotisation.count({ where: { statut: { [Op.in]: ['en_retard', 'impayee'] } } }),
             TontineAmende.sum('montant', { where: { statut: 'due' } }),
             TontineCaution.sum('montantBloque', { where: { statut: { [Op.ne]: 'liberee' } } }),
-            TontineDemandeCredit.count({ where: { statut: 'decaissee' } }),
             TontineGroupe.count({ where: { createdAt: { [Op.gte]: jours(30) } } }),
         ]);
 
@@ -68,7 +66,6 @@ const stats = async (req, res) => {
             encoursCaisses: arrondir(encours),
             amendesDues: arrondir(amendesDues),
             cautionsBloquees: arrondir(cautionsBloquees),
-            creditsEnCours: credits,
             volumeVerse: arrondir(volumeVerse),
             fraisPerçus: arrondir(frais),
             sante: {
@@ -134,8 +131,7 @@ const detailGroupe = async (req, res) => {
                 {
                     model: TontineMembre, as: 'membres',
                     include: [{ model: Client, as: 'client', attributes: ['id', 'nom', 'email', 'telephone'] }]
-                },
-                { model: TontinePoolCredit, as: 'poolCredit', required: false }
+                }
             ],
             order: [[{ model: TontineMembre, as: 'membres' }, 'ordreBeneficiaire', 'ASC']]
         });
@@ -157,14 +153,13 @@ const detailGroupe = async (req, res) => {
 
         const portefeuilles = {};
         for (const [cle, id] of [['caisse', groupe.portefeuilleId],
-                                 ['cautions', groupe.portefeuilleCautionId],
-                                 ['epargne', groupe.portefeuilleEpargneId]]) {
+                                 ['cautions', groupe.portefeuilleCautionId]]) {
             if (!id) { portefeuilles[cle] = null; continue; }
             const pf = await Portefeuille.findByPk(id);
             portefeuilles[cle] = pf ? { id: pf.id, nom: pf.nom, solde: arrondir(pf.solde) } : null;
         }
 
-        const [amendes, cautions, credits, votes, partages] = await Promise.all([
+        const [amendes, cautions, votes] = await Promise.all([
             TontineAmende.findAll({
                 where: { groupeId: groupe.id },
                 include: [{ model: Client, as: 'client', attributes: ['id', 'nom'] }],
@@ -174,19 +169,12 @@ const detailGroupe = async (req, res) => {
                 where: { groupeId: groupe.id },
                 include: [{ model: Client, as: 'client', attributes: ['id', 'nom'] }]
             }),
-            groupe.poolCredit
-                ? TontineDemandeCredit.findAll({
-                    where: { poolId: groupe.poolCredit.id },
-                    include: [{ model: Client, as: 'emprunteur', attributes: ['id', 'nom'] }]
-                })
-                : [],
             TontineVote.findAll({ where: { groupeId: groupe.id }, order: [['createdAt', 'DESC']], limit: 20 }),
-            TontinePartage.findAll({ where: { groupeId: groupe.id }, order: [['exercice', 'DESC']] }),
         ]);
 
         return res.status(200).json({
             groupe, portefeuilles, cycles, cycleCourant, cotisations,
-            amendes, cautions, credits, votes, partages
+            amendes, cautions, votes
         });
     } catch (e) {
         console.error(e);
@@ -226,7 +214,7 @@ const anomalies = async (req, res) => {
         });
         for (const pf of caisses) {
             const g = await TontineGroupe.findByPk(pf.groupeTontineId);
-            if (!g || g.portefeuilleId !== pf.id) continue;   // sequestre ou epargne : normal
+            if (!g || g.portefeuilleId !== pf.id) continue;   // sequestre des cautions : normal
             const cycle = await TontineCycle.findOne({
                 where: { groupeId: g.id, numeroCycle: g.numeroCycleActuel }
             });
@@ -358,7 +346,6 @@ const exporter = async (req, res) => {
         wsG.columns = [
             { header: 'ID', key: 'id', width: 8 },
             { header: 'Nom', key: 'nom', width: 30 },
-            { header: 'Type', key: 'type', width: 12 },
             { header: 'Statut', key: 'statut', width: 12 },
             { header: 'Cotisation', key: 'montant', width: 14 },
             { header: 'Frequence', key: 'frequence', width: 14 },
@@ -376,7 +363,7 @@ const exporter = async (req, res) => {
         for (const g of groupes) {
             const caisse = g.portefeuilleId ? await Portefeuille.findByPk(g.portefeuilleId) : null;
             wsG.addRow({
-                id: g.id, nom: g.nom, type: g.type, statut: g.statut,
+                id: g.id, nom: g.nom, statut: g.statut,
                 montant: arrondir(g.montantParPeriode), frequence: g.frequence,
                 membres: `${g.membresActuels}/${g.membresMax}`, cycle: g.numeroCycleActuel,
                 caisse: caisse ? arrondir(caisse.solde) : 0,

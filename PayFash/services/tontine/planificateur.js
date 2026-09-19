@@ -1,7 +1,6 @@
 'use strict';
 
 const CycleService = require('./cycle.service');
-const CreditService = require('./credit.service');
 const EchangeService = require('./echange.service');
 const EnchereService = require('./enchere.service');
 const { VoteService } = require('./vote.service');
@@ -30,11 +29,11 @@ const PrelevementService = require('./prelevement.service');
 //    1. rappeler AVANT l'echeance ;
 //    2. alerter d'un solde qui ne suffira pas, puis PRELEVER pour ceux qui
 //       ont donne mandat — c'est la que l'amende est evitee ;
-//    3. constater le defaut et sanctionner, sans jamais verser ;
+//    3. constater le defaut, sanctionner et mobiliser la caution, sans
+//       jamais verser ;
 //    4. depouiller les scrutins echus et appliquer leur effet ;
 //    5. fermer les echanges de tour non traites a temps ;
-//    6. constater les echeances de credit depassees ;
-//    7. rattraper les paiements Fapshi restes en attente — un utilisateur
+//    6. rattraper les paiements Fapshi restes en attente — un utilisateur
 //       qui ferme l'application au mauvais moment ne doit rien perdre.
 // =====================================================================
 
@@ -81,10 +80,6 @@ async function passe(maintenant = new Date()) {
     // restait au beneficiaire d'origine.
     try { rapport.encheres = await EnchereService.traiterEncheresEchues(maintenant); }
     catch (e) { rapport.encheres = { erreur: e.message }; }
-
-    // 5. Credit : constater les retards, basculer en defaut au 3e.
-    try { rapport.credits = await CreditService.traiterEcheancesCredit(maintenant); }
-    catch (e) { rapport.credits = { erreur: e.message }; }
 
     // 6. Paiements orphelins. Le webhook Fapshi peut ne jamais arriver —
     // serveur non joignable, rappel perdu, application fermee au mauvais

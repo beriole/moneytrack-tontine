@@ -3,7 +3,8 @@ const db = require('../../config/bd');
 
 // Caisse 4. Entierement neuve : NjanguiPay n'avait qu'un compteur
 // warningCount sans consequence. Une amende est une DETTE : elle se regle
-// avant la cotisation suivante, et son produit va la ou dit destinationAmendes.
+// avant la cotisation suivante, et son produit indemnise le membre lese —
+// le beneficiaire du cycle concerne. Voir AmendeService.payerDans.
 const TontineAmende = db.define("TontineAmende", {
     groupeId: {
         type: DataTypes.INTEGER,
@@ -38,13 +39,7 @@ const TontineAmende = db.define("TontineAmende", {
     infligeePar: {
         type: DataTypes.INTEGER,
         allowNull: true,
-        comment: "Client censeur. Null = levee automatiquement par le cron"
-    },
-    destination: {
-        type: DataTypes.ENUM('epargne', 'pot_cycle'),
-        allowNull: false,
-        defaultValue: 'epargne',
-        comment: "Fige la destination au moment de l'infliction (decision D7)"
+        comment: "Membre du bureau qui a inflige l'amende. Null = levee automatiquement par le planificateur"
     },
     commentaire: {
         type: DataTypes.TEXT,

@@ -94,7 +94,7 @@ const requete = (admin, extra = {}) => ({
     try {
         titre('1. Un groupe bloque par un membre injoignable');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete', pourcentageCaution: 0
         });
         for (const c of [bertrand, clarisse, daniel]) await GroupeService.rejoindreGroupe(c.id, groupe.codeInvitation);
@@ -239,7 +239,7 @@ const requete = (admin, extra = {}) => ({
         const cotisationAbsente = await TontineCotisation.findByPk(absent.id);
         verifier("la cotisation absente reste IMPAYEE, pas maquillee en payee",
             cotisationAbsente.statut === 'impayee', cotisationAbsente.statut);
-        verifier('la dette reste donc recouvrable par la caution ou le garant',
+        verifier('la dette reste donc recouvrable sur la caution',
             arrondir(cotisationAbsente.montantPaye) === 0);
 
         titre('7. Tout laisse une trace nominative');

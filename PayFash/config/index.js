@@ -57,9 +57,6 @@ const ENV = {
         ? parseInt(process.env.TONTINE_CLIENT_PLATEFORME_ID, 10)
         : null,
 
-    // Taux d'interet mensuel par defaut de la caisse de credit, en %
-    TONTINE_TAUX_CREDIT_DEFAUT: parseFloat(process.env.TONTINE_TAUX_CREDIT_DEFAUT || '5'),
-
     // ---- Fapshi (agregateur de paiement camerounais) ----
     // Le mode decide quelles cles sont lues : on ne melange jamais des
     // identifiants sandbox avec une URL de production.

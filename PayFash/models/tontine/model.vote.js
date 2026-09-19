@@ -7,7 +7,7 @@ const TontineVote = db.define("TontineVote", {
         allowNull: false
     },
     sujet: {
-        type: DataTypes.ENUM('admettre', 'exclure', 'modifier_regles', 'dissoudre', 'elire_ordre', 'approuver_credit'),
+        type: DataTypes.ENUM('admettre', 'exclure', 'modifier_regles', 'dissoudre', 'elire_ordre'),
         allowNull: false
     },
     cibleId: {

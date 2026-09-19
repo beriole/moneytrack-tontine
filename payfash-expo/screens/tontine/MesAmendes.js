@@ -79,11 +79,13 @@ export default function MesAmendes() {
               <Text style={s.carteMontant}>{fcfa(a.montant)}</Text>
               <Text style={s.carteInfo}>
                 {a.groupe?.nom || 'Tontine'} · {dateCourte(a.createdAt)}
-                {a.censeur ? ` · infligee par ${a.censeur.nom}` : ' · levee automatiquement a l\'echeance'}
+                {a.auteur ? ` · infligee par ${a.auteur.nom}` : ' · levee automatiquement a l\'echeance'}
               </Text>
               {a.commentaire ? <Text style={s.carteInfo}>{a.commentaire}</Text> : null}
               <Text style={[s.carteInfo, { marginTop: 6 }]}>
-                Destination : {a.destination === 'epargne' ? "caisse d'epargne du groupe" : 'pot du cycle'}
+                {a.cycle
+                  ? `Indemnise le beneficiaire du cycle ${a.cycle.numeroCycle}`
+                  : 'Grossira le premier pot verse'}
               </Text>
 
               {a.statut === 'due' && (
@@ -98,7 +100,7 @@ export default function MesAmendes() {
           ))
         )}
 
-        <Info texte="Les amendes ne vont jamais a la plateforme. Selon la regle du groupe, elles alimentent la caisse d'epargne — redistribuee a tous lors de la casse annuelle — ou le pot du cycle, qui indemnise le beneficiaire lese par le retard." />
+        <Info texte="Une amende ne va jamais a la plateforme : elle indemnise le membre que le retard a lese, le beneficiaire du cycle concerne. Si son pot est deja verse, elle lui est envoyee directement." />
       </ScrollView>
     </SafeAreaView>
   );

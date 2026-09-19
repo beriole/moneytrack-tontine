@@ -102,7 +102,7 @@ const acteur = (id) => ({ clientId: id });
         verifier('portefeuille de projet cree, objectif 450 000', arrondir(pfProjet.solde) === 0);
 
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM_GROUPE, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM_GROUPE, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete', pourcentageCaution: 0
         });
         for (const c of [bertrand, clarisse, daniel]) await GroupeService.rejoindreGroupe(c.id, groupe.codeInvitation);

@@ -1,8 +1,14 @@
 const { DataTypes } = require('sequelize');
 const db = require('../../config/bd');
 
-// Caisse 1 (le tour) + caisse 2 (epargne/credit) + caisse 4 (amendes).
-// La caisse de solidarite est hors perimetre : pas de type 'social'.
+// Un groupe de tontine est un tour rotatif : chacun cotise a chaque
+// periode, et le pot revient a un membre par cycle jusqu'a ce que tous
+// aient ete servis. La caution et les amendes en sont la discipline.
+//
+// La colonne `type` distinguait trois formules — rotative, credit, mixte —
+// selon que le groupe tenait aussi une caisse d'epargne et de credit. Cette
+// caisse a ete retiree : il ne reste qu'une formule, et plus rien a
+// distinguer.
 const TontineGroupe = db.define("TontineGroupe", {
     nom: {
         type: DataTypes.STRING(150),
@@ -15,12 +21,6 @@ const TontineGroupe = db.define("TontineGroupe", {
     photoUrl: {
         type: DataTypes.TEXT,
         allowNull: true
-    },
-    type: {
-        type: DataTypes.ENUM('rotative', 'credit', 'mixte'),
-        allowNull: false,
-        defaultValue: 'rotative',
-        comment: "rotative = caisse 1 seule, credit = caisse 2 seule, mixte = les deux"
     },
     montantParPeriode: {
         type: DataTypes.DECIMAL(15, 2),
@@ -71,12 +71,6 @@ const TontineGroupe = db.define("TontineGroupe", {
             try { return JSON.parse(valeur); } catch (e) { return valeur; }
         }
     },
-    destinationAmendes: {
-        type: DataTypes.ENUM('epargne', 'pot_cycle'),
-        allowNull: false,
-        defaultValue: 'epargne',
-        comment: "Decision D7 : ou tombe l'argent des amendes (caisse 4)"
-    },
     portefeuilleId: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -86,11 +80,6 @@ const TontineGroupe = db.define("TontineGroupe", {
         type: DataTypes.INTEGER,
         allowNull: true,
         comment: "Sequestre des cautions. Distinct de la caisse, qui doit revenir a zero."
-    },
-    portefeuilleEpargneId: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: "Caisse d'epargne (caisse 2), alimentee par les amendes si destinationAmendes = 'epargne'"
     },
     modeAcces: {
         type: DataTypes.ENUM('prive', 'lien', 'public'),

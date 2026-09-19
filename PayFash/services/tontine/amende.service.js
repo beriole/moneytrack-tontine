@@ -3,25 +3,42 @@
 const { Op } = require('sequelize');
 const {
     db, Client,
-    TontineGroupe, TontineMembre, TontineAmende, TontineCycle, TontineCotisation, TontinePoolCredit
+    TontineGroupe, TontineMembre, TontineAmende, TontineCycle, TontineCotisation
 } = require('../../models');
 const {
     ErreurTontine, nombre, arrondir,
-    portefeuilleClient, caisseGroupe, portefeuilleEpargne,
+    portefeuilleClient, caisseGroupe,
     exigerRole, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
+const { exigerActe } = require('./permissions');
 
 // =====================================================================
-//  Caisse 4 — les amendes.
+//  Les amendes.
 //
 //  Entierement neuve : NjanguiPay n'avait qu'un compteur warningCount,
 //  sans consequence financiere. Ici une amende est une DETTE : tant
 //  qu'elle n'est pas reglee, le membre ne peut plus cotiser.
 //
-//  Sa destination suit la decision D7, figee au moment de l'infliction :
-//    'epargne'   -> caisse 2, redistribuee a tous lors de la casse ;
-//    'pot_cycle' -> le pot du cycle, qui indemnise le beneficiaire lese.
-//  Jamais la plateforme : elle gagnerait de l'argent sur les retards.
+//  OU VA L'ARGENT. Une amende indemnise celui que le manquement a lese :
+//  le beneficiaire du cycle concerne, qui attendait un pot complet.
+//
+//    - le cycle n'est pas encore verse  -> l'amende entre dans sa caisse
+//      et grossit le pot : le beneficiaire la recoit au versement ;
+//    - le cycle a deja ete verse        -> elle part directement au
+//      beneficiaire de ce cycle. Elle tombait jusqu'ici dans la caisse du
+//      cycle SUIVANT, et indemnisait quelqu'un qui n'avait rien subi.
+//
+//  Deux cas limites :
+//    - le sanctionne est lui-meme le beneficiaire du cycle : il se paierait
+//      sa propre amende. Elle est reportee sur le cycle en cours, s'il n'est
+//      pas le sien ;
+//    - plus aucun cycle a abonder (rotation achevee) : elle est partagee a
+//      parts egales entre les autres membres, que le manquement a leses
+//      collectivement.
+//
+//  L'autre destination historique — la caisse d'epargne du groupe — a
+//  disparu avec elle. Jamais la plateforme : elle gagnerait de l'argent
+//  sur les retards.
 // =====================================================================
 
 const MOTIFS = ['retard', 'absence', 'indiscipline', 'autre'];
@@ -38,13 +55,42 @@ class AmendeService {
         return arrondir(nombre(this.bareme(groupe)[motif] || BAREME_DEFAUT.autre));
     }
 
+    /** Le cycle en cours d'un groupe : le dernier qui n'est pas verse. */
+    static async cycleEnCours(groupeId, t, verrouiller = false) {
+        const options = { transaction: t };
+        if (verrouiller && t) options.lock = t.LOCK.UPDATE;
+        return TontineCycle.findOne({
+            where: { groupeId, statut: { [Op.ne]: 'complete' } },
+            order: [['numeroCycle', 'DESC']],
+            ...options
+        });
+    }
+
     /**
-     * Destination effective. Un groupe purement rotatif n'a pas de caisse
-     * d'epargne : l'amende retombe alors sur le pot du cycle.
+     * Qui recoit le produit d'une amende. Voir l'en-tete du fichier.
+     *
+     * Renvoie { mode, cycle } :
+     *   'pot'          -> la caisse du groupe ; `cycle` est celui qu'elle
+     *                     abonde, ou null si le groupe n'a pas demarre ;
+     *   'beneficiaire' -> le beneficiaire de `cycle`, deja verse ;
+     *   'membres'      -> partage entre les autres membres.
      */
-    static destination(groupe) {
-        if (groupe.destinationAmendes === 'epargne' && groupe.type === 'rotative') return 'pot_cycle';
-        return groupe.destinationAmendes;
+    static async destinataire(amende, groupe, payeurId, t) {
+        const enCours = await this.cycleEnCours(groupe.id, t, true);
+        const concerne = amende.cycleId
+            ? await TontineCycle.findByPk(amende.cycleId, { transaction: t, lock: t.LOCK.UPDATE })
+            : enCours;
+
+        if (concerne && concerne.beneficiaireId !== payeurId) {
+            return concerne.statut === 'complete'
+                ? { mode: 'beneficiaire', cycle: concerne }
+                : { mode: 'pot', cycle: concerne };
+        }
+        if (enCours && enCours.beneficiaireId !== payeurId) return { mode: 'pot', cycle: enCours };
+        // Avant le demarrage : l'amende attend dans la caisse et grossira le
+        // premier pot verse.
+        if (groupe.statut === 'en_attente') return { mode: 'pot', cycle: null };
+        return { mode: 'membres', cycle: null };
     }
 
     // -----------------------------------------------------------------
@@ -60,8 +106,7 @@ class AmendeService {
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
 
             if (!acteur.systeme) {
-                await exigerRole(groupeId, acteur.clientId, ['censeur', 'president'], t,
-                    'infliger une amende');
+                await exigerActe('infligerAmende', groupeId, acteur.clientId, t);
             }
 
             const membre = await TontineMembre.findOne({
@@ -70,17 +115,23 @@ class AmendeService {
             if (!membre) throw new ErreurTontine(404, "Ce client n'est pas membre du groupe");
             if (membre.statut === 'exclu') throw new ErreurTontine(409, 'Ce membre est deja exclu');
 
+            // Sans cycle designe, l'amende se rattache au cycle en cours :
+            // une absence pendant le tour 3 indemnise le beneficiaire du
+            // tour 3, meme reglee au tour 5.
+            const cycleRattache = cycleId
+                || (await this.cycleEnCours(groupeId, t) || {}).id
+                || null;
+
             const amende = await TontineAmende.create({
                 groupeId,
                 membreId: membre.id,
                 clientId: membre.clientId,
-                cycleId: cycleId || null,
+                cycleId: cycleRattache,
                 motif,
                 montant: montant !== undefined && montant !== null
                     ? arrondir(montant) : this.montantBareme(groupe, motif),
                 statut: 'due',
                 infligeePar: acteur.systeme ? null : acteur.clientId,
-                destination: this.destination(groupe),
                 commentaire: commentaire || null
             }, { transaction: t });
 
@@ -121,8 +172,7 @@ class AmendeService {
                 motif: 'retard',
                 montant: this.montantBareme(groupe, 'retard'),
                 statut: 'due',
-                infligeePar: null,   // levee par le systeme, pas par le censeur
-                destination: this.destination(groupe),
+                infligeePar: null,   // levee par la regle, pas par une personne
                 commentaire: `Cotisation du cycle ${cycle.numeroCycle} non soldee a l'echeance`
             }, { transaction: t });
 
@@ -161,52 +211,68 @@ class AmendeService {
             exigerGroupeNonGele(groupe, "le reglement d'une amende");
             const montant = arrondir(amende.montant);
             const portefeuille = await portefeuilleClient(clientId, t, true);
+            const cible = await this.destinataire(amende, groupe, clientId, t);
 
-            let destinataire, libelle;
-            if (amende.destination === 'pot_cycle') {
-                destinataire = await caisseGroupe(groupe, t, true);
-                libelle = 'pot du cycle';
+            let libelle;
+            if (cible.mode === 'pot') {
+                const caisse = await caisseGroupe(groupe, t, true);
+                await transferer(portefeuille, caisse, montant, t);
+                libelle = cible.cycle ? `pot du cycle ${cible.cycle.numeroCycle}` : 'pot du premier cycle';
+                if (cible.cycle) {
+                    // Le pot grossit : le beneficiaire lese est indemnise au versement.
+                    await cible.cycle.update({
+                        montantCollecte: arrondir(nombre(cible.cycle.montantCollecte) + montant)
+                    }, { transaction: t });
+                }
+            } else if (cible.mode === 'beneficiaire') {
+                const recoit = await portefeuilleClient(cible.cycle.beneficiaireId, t, true);
+                await transferer(portefeuille, recoit, montant, t);
+                await ecrireTransaction({
+                    montant,
+                    type: 'amende_indemnite',
+                    description: `Indemnite d'amende (${amende.motif}) — cycle ${cible.cycle.numeroCycle} de ${groupe.nom}`,
+                    clientId: cible.cycle.beneficiaireId,
+                    groupeId: groupe.id,
+                    cycleId: cible.cycle.id,
+                    reference: `TNT-AMD-I-${amende.id}`
+                }, t);
+                libelle = `beneficiaire du cycle ${cible.cycle.numeroCycle}`;
             } else {
-                destinataire = await portefeuilleEpargne(groupe, t, true);
-                libelle = "caisse d'epargne";
+                const autres = await TontineMembre.findAll({
+                    where: { groupeId: groupe.id, clientId: { [Op.ne]: clientId }, statut: ['actif', 'termine'] },
+                    order: [['id', 'ASC']], transaction: t
+                });
+                if (!autres.length) throw new ErreurTontine(409, 'Aucun membre a indemniser dans ce groupe');
+                // Parts entieres ; le reliquat de division va au premier, pour
+                // que la somme versee tombe juste au franc pres.
+                const part = Math.floor(montant / autres.length);
+                const reste = arrondir(montant - part * autres.length);
+                for (const [i, m] of autres.entries()) {
+                    const somme = arrondir(part + (i === 0 ? reste : 0));
+                    if (somme <= 0) continue;
+                    const recoit = await portefeuilleClient(m.clientId, t, true);
+                    await transferer(portefeuille, recoit, somme, t);
+                    await ecrireTransaction({
+                        montant: somme,
+                        type: 'amende_indemnite',
+                        description: `Part d'amende (${amende.motif}) — ${groupe.nom}`,
+                        clientId: m.clientId,
+                        groupeId: groupe.id,
+                        reference: `TNT-AMD-I-${amende.id}-${m.clientId}`
+                    }, t);
+                }
+                libelle = `${autres.length} membre(s) du groupe`;
             }
-            await transferer(portefeuille, destinataire, montant, t);
 
             const transaction = await ecrireTransaction({
                 montant,
                 type: 'amende',
-                description: `Amende (${amende.motif}) reglee vers la ${libelle} — ${groupe.nom}`,
+                description: `Amende (${amende.motif}) reglee — au ${libelle} — ${groupe.nom}`,
                 clientId,
                 groupeId: groupe.id,
-                cycleId: amende.cycleId,
+                cycleId: cible.cycle ? cible.cycle.id : amende.cycleId,
                 reference: `TNT-AMD-${amende.id}`
             }, t);
-
-            // Le pot grossit : le beneficiaire lese par le retard est indemnise.
-            if (amende.destination === 'pot_cycle' && amende.cycleId) {
-                const cycle = await TontineCycle.findByPk(amende.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
-                if (cycle && cycle.statut !== 'complete') {
-                    await cycle.update({
-                        montantCollecte: arrondir(nombre(cycle.montantCollecte) + montant)
-                    }, { transaction: t });
-                }
-            }
-
-            // Caisse 2 : l'amende est tracee a part des apports et des interets,
-            // pour que la casse annuelle reste justifiable ligne a ligne.
-            if (amende.destination === 'epargne') {
-                const pool = await TontinePoolCredit.findOne({
-                    where: { groupeId: groupe.id }, transaction: t, lock: t.LOCK.UPDATE
-                });
-                if (pool) {
-                    await pool.update({
-                        amendesCumulees: arrondir(nombre(pool.amendesCumulees) + montant),
-                        capitalTotal: arrondir(nombre(pool.capitalTotal) + montant),
-                        capitalDisponible: arrondir(nombre(pool.capitalDisponible) + montant),
-                        derniereMaj: new Date()
-                    }, { transaction: t });
-                }
-            }
 
             await amende.update({
                 statut: 'payee',
@@ -225,8 +291,7 @@ class AmendeService {
             if (amende.statut === 'payee') throw new ErreurTontine(409, 'Une amende reglee ne peut pas etre annulee');
             if (amende.statut === 'annulee') throw new ErreurTontine(409, 'Cette amende est deja annulee');
 
-            await exigerRole(amende.groupeId, acteur.clientId, ['censeur', 'president'], t,
-                'annuler une amende');
+            await exigerActe('annulerAmende', amende.groupeId, acteur.clientId, t);
 
             await amende.update({
                 statut: 'annulee',
@@ -247,7 +312,9 @@ class AmendeService {
             where,
             include: [
                 { model: TontineGroupe, as: 'groupe', attributes: ['id', 'nom'] },
-                { model: Client, as: 'censeur', attributes: ['id', 'nom'] }
+                { model: Client, as: 'auteur', attributes: ['id', 'nom'] },
+                // Le cycle dit qui l'amende indemnise : son beneficiaire.
+                { model: TontineCycle, as: 'cycle', attributes: ['id', 'numeroCycle'], required: false }
             ],
             order: [['createdAt', 'DESC']]
         });
@@ -265,7 +332,7 @@ class AmendeService {
             where: { groupeId },
             include: [
                 { model: Client, as: 'client', attributes: ['id', 'nom'] },
-                { model: Client, as: 'censeur', attributes: ['id', 'nom'] }
+                { model: Client, as: 'auteur', attributes: ['id', 'nom'] }
             ],
             order: [['createdAt', 'DESC']]
         });

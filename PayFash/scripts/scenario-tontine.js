@@ -95,10 +95,25 @@ async function doitEchouer(libelle, codeAttendu, fn) {
         // --- 1. Constitution -----------------------------------------
         titre('1. Constitution du groupe');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM_GROUPE, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM_GROUPE, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'tirage'
         });
         verifier('groupe cree, code ' + groupe.codeInvitation, groupe.statut === 'en_attente');
+
+        // La tontine se limite au tour rotatif. Une application anterieure
+        // envoie encore le champ type : 'rotative' doit passer, une formule
+        // retiree doit etre refusee plutot que creee en silence.
+        const ancien = await GroupeService.creerGroupe(awa.id, {
+            nom: NOM_GROUPE + ' (ancienne app)', type: 'rotative', montantParPeriode: MONTANT,
+            frequence: 'mensuelle', membresMax: 2
+        });
+        verifier('une ancienne application qui envoie type=rotative est acceptee', !!ancien.id);
+        await Portefeuille.destroy({ where: { groupeTontineId: ancien.id } });
+        await TontineGroupe.destroy({ where: { id: ancien.id } });
+        await doitEchouer('une tontine de credit est refusee', 400,
+            () => GroupeService.creerGroupe(awa.id, {
+                nom: NOM_GROUPE + ' (credit)', type: 'credit', montantParPeriode: MONTANT, membresMax: 2
+            }));
 
         for (const c of [bertrand, clarisse, daniel]) {
             await GroupeService.rejoindreGroupe(c.id, groupe.codeInvitation);

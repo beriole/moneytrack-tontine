@@ -28,7 +28,6 @@ const HORIZONS = [
 const NATURE = {
   cotisation: { icone: 'account-cash', libelle: 'Cotisation' },
   amende: { icone: 'gavel', libelle: 'Amende' },
-  credit: { icone: 'credit-card-clock', libelle: 'Échéance de crédit' },
   tour: { icone: 'gift', libelle: 'Votre tour' },
 };
 

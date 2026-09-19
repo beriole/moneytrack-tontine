@@ -23,7 +23,7 @@ const models = require('../models/index.js');
 
 const {
     db, Client, Portefeuille,
-    TontineGroupe, TontineMembre, TontinePoolCredit
+    TontineGroupe, TontineMembre
 } = models;
 
 const MARQUEUR = '@tontine.local';
@@ -32,8 +32,8 @@ const MOT_DE_PASSE = 'Demo@2026';
 
 const DEMOS = [
     { nom: 'Awa Ngo Bell', email: 'awa@tontine.local', telephone: 690000091, role: 'president' },
-    { nom: 'Bertrand Fotso', email: 'bertrand@tontine.local', telephone: 690000092, role: 'tresorier' },
-    { nom: 'Clarisse Mbarga', email: 'clarisse@tontine.local', telephone: 690000093, role: 'censeur' },
+    { nom: 'Bertrand Fotso', email: 'bertrand@tontine.local', telephone: 690000092, role: 'membre' },
+    { nom: 'Clarisse Mbarga', email: 'clarisse@tontine.local', telephone: 690000093, role: 'membre' },
     { nom: 'Daniel Nkodo', email: 'daniel@tontine.local', telephone: 690000094, role: 'membre' }
 ];
 
@@ -106,8 +106,7 @@ async function creer() {
         if (!groupe) {
             groupe = await TontineGroupe.create({
                 nom: 'Njangi Demo',
-                description: 'Groupe de demonstration : tour rotatif + caisse de credit.',
-                type: 'mixte',
+                description: 'Groupe de demonstration : tour rotatif.',
                 montantParPeriode: MONTANT_PAR_PERIODE,
                 devise: 'XAF',
                 frequence: 'mensuelle',
@@ -116,7 +115,6 @@ async function creer() {
                 modeOrdre: 'tirage',
                 pourcentageCaution: ENV.TONTINE_CAUTION_DEFAUT,
                 bareme: { retard: 1000, absence: 2000, indiscipline: 5000, autre: 1000 },
-                destinationAmendes: 'epargne',
                 modeAcces: 'prive',
                 codeInvitation: crypto.randomBytes(4).toString('hex').toUpperCase(),
                 statut: 'en_attente',
@@ -148,12 +146,6 @@ async function creer() {
                     dateAdhesion: new Date()
                 }, { transaction: t });
             }
-
-            await TontinePoolCredit.create({
-                groupeId: groupe.id,
-                tauxInteretDefaut: ENV.TONTINE_TAUX_CREDIT_DEFAUT,
-                derniereMaj: new Date()
-            }, { transaction: t });
 
             console.log('cree    groupe "Njangi Demo"  id=' + groupe.id +
                 '  code=' + groupe.codeInvitation + '  caisse=' + caisse.id);

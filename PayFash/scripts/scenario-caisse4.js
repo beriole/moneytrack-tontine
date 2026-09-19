@@ -7,8 +7,8 @@
 //  saisie, le pot est complete, le cycle se verse normalement et
 //  l'incident est trace ».
 //
-//  Controle aussi la cascade complete — amende, caution, garant,
-//  exclusion — et les permissions du bureau.
+//  Controle aussi la cascade complete — amende, caution, exclusion —
+//  et les permissions du bureau.
 // =====================================================================
 
 const { Op } = require('sequelize');
@@ -88,7 +88,7 @@ const president = (id) => ({ clientId: id });
         // --- 1. Caution ---------------------------------------------
         titre('1. Blocage des cautions');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM_GROUPE, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM_GROUPE, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete',
             pourcentageCaution: 100, bareme: { retard: 1500, absence: 2000, indiscipline: 5000, autre: 1000 }
         });
@@ -125,7 +125,7 @@ const president = (id) => ({ clientId: id });
         // le groupe ci-dessus a demarre sans lui — mais quand il est leve, il
         // doit mordre.
         const strict = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM_GROUPE + ' (caution exigee)', type: 'rotative',
+            nom: NOM_GROUPE + ' (caution exigee)',
             montantParPeriode: MONTANT, frequence: 'mensuelle', membresMax: 3,
             modeOrdre: 'anciennete', pourcentageCaution: 100, cautionObligatoire: true
         });
@@ -150,14 +150,12 @@ const president = (id) => ({ clientId: id });
             () => AmendeService.infliger(president(daniel.id), groupe.id,
                 { clientId: clarisse.id, motif: 'absence' }));
 
-        const censeur = await TontineMembre.findOne({ where: { groupeId: groupe.id, clientId: clarisse.id } });
-        await censeur.update({ role: 'censeur' });
-        const amendeAbsence = await AmendeService.infliger(president(clarisse.id), groupe.id,
+        const amendeAbsence = await AmendeService.infliger(president(awa.id), groupe.id,
             { clientId: daniel.id, motif: 'absence', commentaire: 'Absent a la reunion de lancement' });
-        verifier('le censeur inflige au bareme du groupe : ' + amendeAbsence.montant,
+        verifier('le bureau inflige au bareme du groupe : ' + amendeAbsence.montant,
             arrondir(amendeAbsence.montant) === 2000);
-        verifier('destination "pot_cycle" pour un groupe rotatif',
-            amendeAbsence.destination === 'pot_cycle');
+        verifier('avant le demarrage, l amende n est rattachee a aucun cycle',
+            amendeAbsence.cycleId === null);
 
         await doitEchouer('un simple membre ne peut pas annuler une amende', 403,
             () => AmendeService.annuler(president(bertrand.id), amendeAbsence.id));
@@ -180,38 +178,50 @@ const president = (id) => ({ clientId: id });
             if (c.id !== defaillant.id) await CycleService.cotiser(c.clientId, cycle1.id);
         }
 
+        // La cotisation est ouverte et l'echeance pas encore passee : c'est
+        // le seul moment ou la saisie manuelle se teste, puisque la regle
+        // s'en chargera des que l'echeance tombera.
+        await doitEchouer('un simple membre ne peut pas saisir une caution', 403,
+            () => RecouvrementService.parCaution(president(bertrand.id), defaillant.id));
+
+        const etatAvant = await RecouvrementService.etat(awa.id, defaillant.id);
+        verifier('la cascade voit la caution disponible avant l echeance',
+            etatAvant.crans.cautionDisponible === MONTANT && etatAvant.crans.cautionCouvreTout === true);
+
+        const soldeDefaillantAvant = await soldeDe(defaillant.clientId);
         await cycle1.update({ dateFinPrevue: new Date(Date.now() - 86400000) });
         const rapport = await CycleService.traiterEcheances();
-        verifier('cron : cycle en defaut, 1 amende de retard levee',
-            rapport.enDefaut === 1 && rapport.amendesLevees === 1);
 
         const amendeRetard = await TontineAmende.findOne({
             where: { cycleId: cycle1.id, clientId: defaillant.clientId, motif: 'retard' }
         });
         verifier('amende au bareme du groupe (1500) et non au defaut (1000)',
             arrondir(amendeRetard.montant) === 1500);
-        verifier('amende levee par le systeme, pas par le censeur', amendeRetard.infligeePar === null);
+        verifier('amende levee par la regle, sans auteur nomme', amendeRetard.infligeePar === null);
 
-        await doitEchouer('versement refuse : le pot est incomplet', 409,
-            () => CycleService.verser(president(awa.id), cycle1.id));
-
-        // --- 4. Cascade : la caution ---------------------------------
-        titre('4. Saisie de la caution');
-        const etat = await RecouvrementService.etat(awa.id, defaillant.id);
-        verifier('la cascade voit l amende levee et la caution disponible',
-            etat.crans.amendeLevee && etat.crans.cautionDisponible === MONTANT);
-        verifier('la caution couvre toute la cotisation', etat.crans.cautionCouvreTout === true);
-
-        await doitEchouer('un simple membre ne peut pas saisir une caution', 403,
-            () => RecouvrementService.parCaution(president(bertrand.id), defaillant.id));
-
-        const soldeDefaillantAvant = await soldeDe(defaillant.clientId);
-        const saisie = await RecouvrementService.parCaution(president(awa.id), defaillant.id);
-        verifier('caution saisie : ' + saisie.montantSaisi + ', cotisation soldee',
-            saisie.cotisationSoldee && saisie.montantSaisi === MONTANT);
+        // --- 4. La garantie est mobilisee par la regle ----------------
+        titre('4. Saisie automatique de la caution');
+        // La caution etait bloquee pour exactement ce cas, le montant est
+        // ecrit au reglement, et rien ne s'y decide : elle attendait
+        // pourtant qu'une personne du bureau la declenche, pendant que le
+        // pot restait incomplet et que la garantie dormait.
+        verifier('cron : 1 amende levee et 1 caution saisie',
+            rapport.amendesLevees === 1 && rapport.cautionsSaisies === 1,
+            JSON.stringify(rapport));
+        verifier('la saisie a solde la cotisation : ' + rapport.montantRecouvre,
+            rapport.cotisationsSoldeesParCaution === 1 && rapport.montantRecouvre === MONTANT);
         verifier('le portefeuille du defaillant n est pas redebite',
             await soldeDe(defaillant.clientId) === soldeDefaillantAvant,
             'l argent etait deja au sequestre');
+
+        const cotisationApres = await TontineCotisation.findByPk(defaillant.id);
+        verifier('cotisation soldee par la garantie', cotisationApres.statut === 'payee');
+        const cycleApres = await TontineCycle.findByPk(cycle1.id);
+        verifier('le cycle quitte le defaut : le pot est complet',
+            cycleApres.statut === 'actif' && rapport.enDefaut === 0);
+
+        await doitEchouer('une caution deja consommee ne se saisit pas deux fois', 409,
+            () => RecouvrementService.parCaution(president(awa.id), defaillant.id));
 
         const cautionDef = await TontineCaution.findOne({
             where: { groupeId: groupe.id, clientId: defaillant.clientId }
@@ -238,29 +248,25 @@ const president = (id) => ({ clientId: id });
         verifier('l amende de retard reste due et visible',
             (await TontineAmende.findByPk(amendeRetard.id)).statut === 'due');
 
-        // --- 7. Cascade : le garant ----------------------------------
-        titre('7. Appel au garant');
+        // --- 6 bis. L'amende indemnise le membre lese -----------------
+        titre('6 bis. L amende va au beneficiaire lese');
+        // Le cycle 1 est verse, son amende de retard est encore due.
+        // Reglee maintenant, elle tombait dans la caisse du cycle 2 et
+        // indemnisait un membre qui n'avait rien subi.
+        const avantLese = await soldeDe(cycle1.beneficiaireId);
+        const caisseAvant = await soldePortefeuille(g1.portefeuilleId);
+        await AmendeService.payer(defaillant.clientId, amendeRetard.id);
+        verifier('le beneficiaire du cycle 1 recoit les 1500 FCFA de l amende',
+            arrondir(await soldeDe(cycle1.beneficiaireId) - avantLese) === 1500);
+        verifier('la caisse du cycle 2 n est pas touchee',
+            await soldePortefeuille(g1.portefeuilleId) === caisseAvant);
+        verifier('l indemnite est ecrite chez le lese',
+            !!(await Transaction.findOne({ where: { reference: `TNT-AMD-I-${amendeRetard.id}` } })));
+
+        // --- 7. Liberation de caution --------------------------------
+        titre('7. Restitution de la caution');
         const cycle2 = versement.cycleSuivant;
         const cot2 = await TontineCotisation.findAll({ where: { cycleId: cycle2.id } });
-        const aCouvrir = cot2.find(c => c.clientId !== defaillant.clientId);
-        const garantChoisi = cot2.find(c => c.clientId !== aCouvrir.clientId);
-
-        await doitEchouer('appel au garant refuse sans garant designe', 409,
-            () => RecouvrementService.parGarant(president(awa.id), aCouvrir.id));
-
-        await doitEchouer('on ne peut pas se porter garant de soi-meme', 400,
-            () => RecouvrementService.designerGarant(aCouvrir.clientId, groupe.id, aCouvrir.clientId));
-        await RecouvrementService.designerGarant(aCouvrir.clientId, groupe.id, garantChoisi.clientId);
-
-        const avantGarant = await soldeDe(garantChoisi.clientId);
-        const appel = await RecouvrementService.parGarant(president(awa.id), aCouvrir.id);
-        verifier('le garant a paye ' + appel.montantCouvert + ' a la place du defaillant',
-            arrondir(avantGarant - await soldeDe(garantChoisi.clientId)) === appel.montantCouvert);
-        verifier('la cotisation couverte est soldee',
-            (await TontineCotisation.findByPk(aCouvrir.id)).statut === 'payee');
-
-        // --- 8. Liberation de caution --------------------------------
-        titre('8. Restitution de la caution');
         // On vise un membre qui a encore une cotisation ouverte sur le cycle 2
         // et dont la caution est intacte — pas le defaillant, dont la caution
         // a deja ete consommee.
@@ -296,10 +302,10 @@ const president = (id) => ({ clientId: id });
             !!liberation.transaction && liberation.transaction.type === 'caution_liberation');
 
         // --- 9. Exclusion --------------------------------------------
-        titre('9. Exclusion');
+        titre('8. Exclusion');
         await doitEchouer('un simple membre ne peut pas exclure', 403,
             () => RecouvrementService.exclure(president(bertrand.id), groupe.id, defaillant.clientId));
-        await doitEchouer('le createur du groupe ne peut pas etre exclu', 409,
+        await doitEchouer('le president ne peut pas etre exclu', 409,
             () => RecouvrementService.exclure(president(awa.id), groupe.id, awa.id));
 
         const exclusion = await RecouvrementService.exclure(
@@ -311,7 +317,7 @@ const president = (id) => ({ clientId: id });
             () => CautionService.bloquer(defaillant.clientId, groupe.id));
 
         // --- 10. Conservation ----------------------------------------
-        titre('10. Conservation de la monnaie');
+        titre('9. Conservation de la monnaie');
         const gFin = await TontineGroupe.findByPk(groupe.id);
         let deltaMembres = 0;
         for (const c of clients) {

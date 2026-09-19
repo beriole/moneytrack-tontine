@@ -8,11 +8,6 @@ import { Bouton, Segments, Info } from './composants';
 import { creerGroupe, messageErreur, fcfa } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
 
-const TYPES = [
-  { valeur: 'rotative', libelle: 'Tour seul' },
-  { valeur: 'credit', libelle: 'Epargne seule' },
-  { valeur: 'mixte', libelle: 'Les deux' },
-];
 const FREQUENCES = [
   { valeur: 'hebdomadaire', libelle: 'Chaque semaine' },
   { valeur: 'quinzaine', libelle: 'Quinzaine' },
@@ -24,12 +19,6 @@ const ORDRES = [
   { valeur: 'anciennete', libelle: 'Anciennete' },
   { valeur: 'enchere', libelle: 'Enchere' },
 ];
-
-const EXPLICATION_TYPE = {
-  rotative: "Le tour classique : chacun cotise, le pot entier revient a un membre par periode, jusqu'a ce que tout le monde ait mange.",
-  credit: "Une caisse commune qui prete aux membres avec interet. Les interets sont partages a la fin de l'exercice.",
-  mixte: 'Le tour et la caisse de credit en parallele, comme dans la plupart des njangis.',
-};
 
 const EXPLICATION_ORDRE = {
   tirage: "L'ordre de passage est tire au sort de facon verifiable au demarrage.",
@@ -47,7 +36,6 @@ export default function CreerTontine() {
   const [membresMax, setMembresMax] = useState('');
   const [caution, setCaution] = useState('10');
   const [cautionObligatoire, setCautionObligatoire] = useState(false);
-  const [type, setType] = useState('rotative');
   const [frequence, setFrequence] = useState('mensuelle');
   const [modeOrdre, setModeOrdre] = useState('tirage');
   const [envoi, setEnvoi] = useState(false);
@@ -67,7 +55,6 @@ export default function CreerTontine() {
       const { data } = await creerGroupe({
         nom: nom.trim(),
         description: description.trim() || undefined,
-        type,
         montantParPeriode: mnt,
         frequence,
         membresMax: nb,
@@ -118,9 +105,10 @@ export default function CreerTontine() {
           placeholderTextColor={colors.textMuted}
         />
 
-        <Text style={s.label}>Type de caisse</Text>
-        <Segments options={TYPES} valeur={type} onChange={setType} />
-        <Text style={s.aide}>{EXPLICATION_TYPE[type]}</Text>
+        <Text style={s.aide}>
+          Chacun cotise a chaque periode ; le pot entier revient a un membre par tour, jusqu'a ce que tout le monde
+          ait ete servi.
+        </Text>
 
         <Text style={s.label}>Cotisation par periode (FCFA)</Text>
         <TextInput
@@ -159,8 +147,9 @@ export default function CreerTontine() {
           placeholderTextColor={colors.textMuted}
         />
 
-        {/* La caution était configurable mais jamais exigée : la cascade de
-            recours caution -> garant pouvait être vide dès le départ. */}
+        {/* La caution était configurable mais jamais exigée. C'est désormais
+            le seul recours en argent contre un défaillant : l'appel au garant
+            a été supprimé. Elle mérite d'autant moins d'être vide. */}
         <TouchableOpacity
           onPress={() => setCautionObligatoire(!cautionObligatoire)}
           activeOpacity={0.8}
