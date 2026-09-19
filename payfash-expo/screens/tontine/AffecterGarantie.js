@@ -139,6 +139,13 @@ export default function AffecterGarantie() {
             </View>
 
             <View style={s.carte}>
+              {apercu.tauxExige > 0 && (
+                <Ligne
+                  label={`Exige par le reglement (${apercu.tauxExige} %)`}
+                  valeur={apercu.manqueApres > 0 ? `il manquera ${fcfa(apercu.manqueApres)}` : 'atteint'}
+                  couleur={apercu.manqueApres > 0 ? colors.warning : colors.success}
+                />
+              )}
               <Ligne label="Couverture actuelle" valeur={`${apercu.couvertureAvant} %`} />
               <Ligne
                 label="Apres cette garantie"

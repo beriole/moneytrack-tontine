@@ -137,6 +137,13 @@ export default function MesGaranties() {
                     dernier
                   />
                   <Progression valeur={bloc.couvert} total={bloc.exposition} />
+                  {bloc.tauxExige > 0 && (
+                    <Text style={[s.aide, { color: bloc.suffisant ? colors.success : colors.warning }]}>
+                      {bloc.suffisant
+                        ? `Le reglement exige ${bloc.tauxExige} % : vous etes en regle.`
+                        : `Le reglement exige ${bloc.tauxExige} % (${fcfa(bloc.montantExige)}) : il manque ${fcfa(bloc.manqueExige)}, sans quoi votre pot sera suspendu.`}
+                    </Text>
+                  )}
                   {bloc.manque > 0 && bloc.statutGroupe !== 'termine' && (
                     <Bouton
                       titre={`Completer la couverture (${fcfa(bloc.manque)})`}

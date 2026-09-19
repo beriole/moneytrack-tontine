@@ -102,6 +102,8 @@ export const mesGaranties = () => api.get('/tontine/garanties');
 export const detailGarantie = (id) => api.get(`/tontine/garanties/${id}`);
 export const libererGarantie = (id) => api.post(`/tontine/garanties/${id}/liberer`);
 export const garantiesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties`);
+// Ce que je couvre, ce que le reglement exige de moi, ce qui manque.
+export const couvertureGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/couverture`);
 export const transmettrePresidence = (groupeId, clientId, motif) =>
   api.post(`/tontine/groupes/${groupeId}/presidence`, { clientId, motif });
 

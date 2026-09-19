@@ -105,10 +105,12 @@ route.get("/groupes/:groupeId/reglement", verifyToken, GOUV.reglementCourant);
 //  couvre. Les routes litterales precedent celles a parametre.
 // =====================================================================
 route.get("/moi/exposition", verifyToken, GAR.monExposition);
+route.get("/regles-couverture", verifyToken, GAR.modelesCouverture);
 route.get("/garanties", verifyToken, GAR.mesGaranties);
 route.get("/garanties/:garantieId", verifyToken, GAR.detail);
 route.post("/garanties/:garantieId/liberer", verifyToken, GAR.liberer);
 route.get("/groupes/:groupeId/exposition", verifyToken, GAR.expositionGroupe);
+route.get("/groupes/:groupeId/couverture", verifyToken, GAR.couvertureGroupe);
 route.get("/groupes/:groupeId/garanties/sources", verifyToken, GAR.sources);
 route.get("/groupes/:groupeId/garanties/simulation", verifyToken, GAR.simulation);
 route.get("/groupes/:groupeId/garanties", verifyToken, GAR.garantiesGroupe);

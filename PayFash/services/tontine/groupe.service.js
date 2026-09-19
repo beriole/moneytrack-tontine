@@ -15,6 +15,7 @@ const {
 } = require('./commun');
 const { exigerActe, pourAdhesion } = require('./permissions');
 const { journaliser } = require('../audit.service');
+const CouvertureService = require('./couverture.service');
 
 const MODES_ORDRE = ['tirage', 'vote', 'enchere', 'anciennete'];
 
@@ -28,7 +29,7 @@ class GroupeService {
             nom, description, type, montantParPeriode,
             frequence = 'mensuelle', membresMax, modeOrdre = 'tirage',
             pourcentageCaution, bareme, modeAcces = 'prive', dateDebut,
-            cautionObligatoire = false
+            cautionObligatoire = false, reglesCouverture
         } = donnees;
 
         if (!nom || !String(nom).trim()) throw new ErreurTontine(400, 'Le nom du groupe est obligatoire');
@@ -47,6 +48,9 @@ class GroupeService {
         if (!MODES_ORDRE.includes(modeOrdre)) throw new ErreurTontine(400, `Mode d'ordre invalide (attendu : ${MODES_ORDRE.join(', ')})`);
         if (!(nombre(montantParPeriode) > 0)) throw new ErreurTontine(400, 'Le montant par periode doit etre strictement positif');
         if (!(parseInt(membresMax, 10) >= 2)) throw new ErreurTontine(400, 'Un groupe compte au minimum 2 membres');
+        // Nom de modele ('premiers_tours') ou regle explicite ; validee ici,
+        // avant toute ecriture.
+        const regles = CouvertureService.normaliser(reglesCouverture);
 
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.create({
@@ -64,6 +68,7 @@ class GroupeService {
                 // membre actif n'a pas depose sa caution.
                 cautionObligatoire: cautionObligatoire === true || cautionObligatoire === 'true',
                 bareme: bareme || null,
+                reglesCouverture: regles,
                 modeAcces,
                 codeInvitation: await this._codeLibre(t),
                 statut: 'en_attente',

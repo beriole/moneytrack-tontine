@@ -1,5 +1,6 @@
 const GarantieService = require('../../services/tontine/garantie.service');
 const ExpositionService = require('../../services/tontine/exposition.service');
+const CouvertureService = require('../../services/tontine/couverture.service');
 const { repondreErreur } = require('./tontine.groupe');
 
 // =====================================================================
@@ -20,6 +21,24 @@ const monExposition = async (req, res) => {
 const expositionGroupe = async (req, res) => {
     try {
         return res.status(200).json(await ExpositionService.pourMembre(req.user.id, req.params.groupeId));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/groupes/:groupeId/couverture
+//
+// Ce que le membre couvre, ce que le reglement exige de lui, ce qui manque.
+const couvertureGroupe = async (req, res) => {
+    try {
+        return res.status(200).json(await CouvertureService.pourMembre(req.user.id, req.params.groupeId));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/regles-couverture
+//
+// Les regles toutes faites proposees a la creation d'un groupe.
+const modelesCouverture = async (req, res) => {
+    try {
+        return res.status(200).json({ modeles: CouvertureService.modeles() });
     } catch (e) { return repondreErreur(res, e); }
 };
 
@@ -89,6 +108,6 @@ const garantiesGroupe = async (req, res) => {
 };
 
 module.exports = {
-    monExposition, expositionGroupe, sources, simulation, affecter,
+    monExposition, expositionGroupe, couvertureGroupe, modelesCouverture, sources, simulation, affecter,
     mesGaranties, detail, liberer, garantiesGroupe
 };

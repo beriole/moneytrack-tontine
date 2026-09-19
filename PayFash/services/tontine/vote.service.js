@@ -27,7 +27,7 @@ const CHOIX = ['pour', 'contre', 'abstention'];
 // La destination des amendes n'en fait plus partie : elles indemnisent
 // toujours le membre lese (voir amende.service.js), il n'y a plus de
 // caisse d'epargne vers laquelle les detourner.
-const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'membresMax'];
+const REGLES_MODIFIABLES = ['montantParPeriode', 'frequence', 'pourcentageCaution', 'bareme', 'membresMax', 'reglesCouverture'];
 
 class VoteService {
 
@@ -68,6 +68,11 @@ class VoteService {
                 const interdits = champs.filter(c => !REGLES_MODIFIABLES.includes(c));
                 if (interdits.length) {
                     throw new ErreurTontine(400, `Regles non modifiables par vote : ${interdits.join(', ')}`);
+                }
+                // Une regle de couverture invalide doit etre refusee a
+                // l'ouverture du scrutin, pas decouverte a son application.
+                if (Object.prototype.hasOwnProperty.call(payload, 'reglesCouverture')) {
+                    require('./couverture.service').normaliser(payload.reglesCouverture);
                 }
             }
 
@@ -288,6 +293,9 @@ class VoteService {
                 const modifs = {};
                 for (const champ of REGLES_MODIFIABLES) {
                     if (vote.payload && vote.payload[champ] !== undefined) modifs[champ] = vote.payload[champ];
+                }
+                if (Object.prototype.hasOwnProperty.call(modifs, 'reglesCouverture')) {
+                    modifs.reglesCouverture = require('./couverture.service').normaliser(modifs.reglesCouverture);
                 }
                 await groupe.update(modifs, { transaction: t });
                 return {

@@ -11,7 +11,7 @@ import {
   mesAmendes, bloquerCaution, etatLiens, lierBudget, destinationsTour, routerTour,
   etatPrelevement, activerPrelevement, desactiverPrelevement,
   messageErreur, fcfa, dateCourte,
-  quitterGroupe
+  quitterGroupe, couvertureGroupe
 } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
 
@@ -25,6 +25,7 @@ export default function DetailTontine() {
   const [mesDettes, setMesDettes] = useState({ nombreDues: 0, totalDu: 0 });
   const [liens, setLiens] = useState(null);
   const [mandat, setMandat] = useState(null);
+  const [couverture, setCouverture] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [rafraichissement, setRafraichissement] = useState(false);
   const [action, setAction] = useState(false);
@@ -45,6 +46,8 @@ export default function DetailTontine() {
       setLiens(l);
       const { data: p } = await etatPrelevement(groupeId);
       setMandat(p);
+      const { data: cv } = await couvertureGroupe(groupeId);
+      setCouverture(cv);
     } catch (e) {
       Alert.alert('Chargement impossible', messageErreur(e));
     } finally {
@@ -364,8 +367,41 @@ export default function DetailTontine() {
           navigation={navigation}
         />
 
+        {/* Avant son tour, le membre doit savoir s'il recevra le pot : un
+            beneficiaire insuffisamment couvert voit son versement suspendu. */}
+        {couverture && couverture.tauxExige > 0 && groupe.statut !== 'termine' && (
+          <>
+            <Text style={s.section}>Ma garantie</Text>
+            <View style={s.carte}>
+              <Ligne label="Il me reste a payer" valeur={fcfa(couverture.exposition)} />
+              <Ligne label={`Exige par le reglement (${couverture.tauxExige} %)`} valeur={fcfa(couverture.montantExige)} />
+              <Ligne
+                label="Je couvre"
+                valeur={fcfa(couverture.couvert)}
+                couleur={couverture.suffisant ? colors.success : colors.warning}
+                dernier
+              />
+              {!couverture.suffisant && (
+                <>
+                  <Text style={s.aide}>
+                    Il manque {fcfa(couverture.manque)} de garantie : sans elle, votre pot sera suspendu le jour de votre tour.
+                  </Text>
+                  {actes.affecterGarantie && (
+                    <Bouton
+                      titre={`Garantir ${fcfa(couverture.manque)}`}
+                      icone="shield-plus-outline"
+                      onPress={() => navigation.navigate('AffecterGarantie', { groupeId, montant: couverture.manque })}
+                    />
+                  )}
+                </>
+              )}
+            </View>
+          </>
+        )}
+
         <Text style={s.section}>Regles</Text>
         <View style={s.carte}>
+          {couverture && <Ligne label="Garantie exigee" valeur={couverture.tauxExige > 0 ? `${couverture.tauxExige} % pour mon tour` : 'Aucune'} />}
           <Ligne label="Ordre de passage" valeur={groupe.modeOrdre} />
           <Ligne label="Membres" valeur={`${groupe.membresActuels} / ${groupe.membresMax}`} />
           <Ligne label="Caution a l'entree" valeur={`${Number(groupe.pourcentageCaution)} %`} />

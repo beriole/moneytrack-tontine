@@ -261,6 +261,20 @@ class CycleService {
                 throw new ErreurTontine(409, `Pot incomplet : ${impayees.length} cotisation(s) non soldee(s) — ${noms}`);
             }
 
+            // --- Couverture du beneficiaire -------------------------------
+            // Le moment critique : une fois le pot recu, le beneficiaire n'a
+            // plus d'interet a cotiser. Si le reglement exige qu'il garantisse
+            // une part de ce qui lui restera a payer, c'est ici, dans la
+            // transaction du versement, que la regle se verifie — sur des
+            // chiffres relus a l'instant, pas sur une analyse anterieure.
+            //
+            // Le versement force (maker-checker, deux administrateurs) passe
+            // outre : c'est la procedure exceptionnelle, auditee.
+            if (!force) {
+                const CouvertureService = require('./couverture.service');
+                await CouvertureService.exigerPourVersement(cycle.beneficiaireId, groupe, t);
+            }
+
             const caisse = await caisseGroupe(groupe, t, true);
             const attendu = arrondir(cycle.montantAttendu);
             if (arrondir(caisse.solde) < attendu && !force) {

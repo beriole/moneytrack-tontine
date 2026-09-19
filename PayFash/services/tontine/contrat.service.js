@@ -44,7 +44,10 @@ class ContratService {
             `7. Une amende impayee bloque la cotisation suivante.`,
             `8. En cas de defaut : amende de retard, puis saisie de la caution, puis exclusion votee.`,
             `9. Le versement du pot exige que toutes les cotisations du cycle soient soldees.`,
-            `10. La caution est restituee une fois toutes les dettes eteintes.`
+            `10. La caution est restituee une fois toutes les dettes eteintes.`,
+            `11. ${require('./couverture.service').decrire(groupe, groupe.membresMax)} `
+            + `Un membre peut completer sa caution par une garantie : une part de son epargne ou d'un projet, `
+            + `bloquee sur son propre compte et prelevee seulement en cas d'impaye.`
         ].join('\n');
     }
 

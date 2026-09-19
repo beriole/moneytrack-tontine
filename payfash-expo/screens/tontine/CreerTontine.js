@@ -20,6 +20,22 @@ const ORDRES = [
   { valeur: 'enchere', libelle: 'Enchere' },
 ];
 
+// Les memes cles que les modeles du serveur (couverture.service.js).
+const COUVERTURES = [
+  { valeur: 'aucune', libelle: 'Aucune' },
+  { valeur: 'premiers_tours', libelle: 'Premiers tours' },
+  { valeur: 'moitie', libelle: 'La moitie' },
+  { valeur: 'totale', libelle: 'Totale' },
+];
+
+const EXPLICATION_COUVERTURE = {
+  aucune: "Le pot est verse sans condition de garantie. Un membre qui a mange tot peut cesser de cotiser : seule sa caution protege le groupe.",
+  premiers_tours:
+    "Ceux qui mangent dans le premier tiers doivent avoir garanti tout ce qui leur restera a payer ; les suivants, la moitie. C'est la ou le risque est le plus grand.",
+  moitie: "Chacun doit avoir garanti la moitie de ce qui lui restera a payer avant de recevoir le pot.",
+  totale: "Chacun doit avoir garanti tout ce qui lui restera a payer avant de recevoir le pot. Le plus sur, le plus exigeant.",
+};
+
 const EXPLICATION_ORDRE = {
   tirage: "L'ordre de passage est tire au sort de facon verifiable au demarrage.",
   anciennete: "L'ordre suit la date d'adhesion : le premier arrive passe le premier.",
@@ -36,6 +52,7 @@ export default function CreerTontine() {
   const [membresMax, setMembresMax] = useState('');
   const [caution, setCaution] = useState('10');
   const [cautionObligatoire, setCautionObligatoire] = useState(false);
+  const [couverture, setCouverture] = useState('aucune');
   const [frequence, setFrequence] = useState('mensuelle');
   const [modeOrdre, setModeOrdre] = useState('tirage');
   const [envoi, setEnvoi] = useState(false);
@@ -61,6 +78,7 @@ export default function CreerTontine() {
         modeOrdre,
         pourcentageCaution: parseFloat(caution) || 0,
         cautionObligatoire,
+        reglesCouverture: couverture,
       });
       await rafraichir();
       navigation.replace('SuccesTontine', {
@@ -169,6 +187,10 @@ export default function CreerTontine() {
             ? "La tontine refusera de démarrer tant qu'un membre actif n'aura pas déposé sa caution."
             : "La caution reste facultative : chacun peut la déposer, personne n'y est tenu."}
         </Text>
+
+        <Text style={s.label}>Garantie exigee avant de recevoir le pot</Text>
+        <Segments options={COUVERTURES} valeur={couverture} onChange={setCouverture} />
+        <Text style={s.aide}>{EXPLICATION_COUVERTURE[couverture]}</Text>
 
         {potEstime > 0 && (
           <View style={{ marginTop: 18 }}>

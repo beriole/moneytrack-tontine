@@ -157,8 +157,13 @@ class GarantieService {
         const exposition = await ExpositionService.pourMembre(clientId, groupeId, { groupe });
         const dejaBloque = await this.totalBloque(clientId, groupeId);
         const caution = await this._cautionDisponible(clientId, groupeId);
+        const couverture = await require('./couverture.service').pourMembre(clientId, groupeId, { groupe });
 
         return {
+            tauxExige: couverture.tauxExige,
+            montantExige: couverture.montantExige,
+            manqueAvant: couverture.manque,
+            manqueApres: arrondir(Math.max(0, couverture.montantExige - (dejaBloque + caution + m))),
             texte,
             hashTexte: this.hacher(texte),
             versionReglement,
@@ -543,13 +548,19 @@ class GarantieService {
 
         for (const bloc of Object.values(parGroupe)) {
             try {
-                const e = await ExpositionService.pourMembre(clientId, bloc.groupeId);
-                const caution = await this._cautionDisponible(clientId, bloc.groupeId);
-                bloc.exposition = e.exposition;
-                bloc.caution = caution;
-                bloc.couvert = arrondir(bloc.bloque + caution);
-                bloc.couverture = this._ratio(bloc.couvert, e.exposition);
-                bloc.manque = arrondir(Math.max(0, e.exposition - bloc.couvert));
+                const c = await require('./couverture.service').pourMembre(clientId, bloc.groupeId);
+                bloc.exposition = c.exposition;
+                bloc.caution = c.caution;
+                bloc.couvert = c.couvert;
+                bloc.couverture = c.couverture;
+                // Deux manques distincts : ce que la regle exige encore, et
+                // ce qu'il faudrait pour couvrir tout l'engagement.
+                bloc.tauxExige = c.tauxExige;
+                bloc.montantExige = c.montantExige;
+                bloc.manqueExige = c.manque;
+                bloc.suffisant = c.suffisant;
+                bloc.manque = arrondir(Math.max(0, c.exposition - c.couvert));
+                bloc.regle = c.regle;
             } catch (e) {
                 bloc.exposition = null;
             }
@@ -597,12 +608,17 @@ class GarantieService {
             const bloque = await this.totalBloque(m.clientId, groupeId);
             const caution = await this._cautionDisponible(m.clientId, groupeId);
             const e = await ExpositionService.pourMembre(m.clientId, groupeId, { membre: m });
+            const c = await require('./couverture.service').pourMembre(m.clientId, groupeId, { membre: m });
             lignes.push({
                 clientId: m.clientId, nom: m.client ? m.client.nom : null,
                 tour: m.ordreBeneficiaire, dejaServi: m.aBeneficie,
                 exposition: e.exposition, caution, garanties: bloque,
                 couvert: arrondir(bloque + caution),
-                couverture: this._ratio(bloque + caution, e.exposition)
+                couverture: this._ratio(bloque + caution, e.exposition),
+                // Ce que voit le president : suffisant ou non, pas pourquoi.
+                tauxExige: c.tauxExige,
+                suffisant: c.suffisant,
+                manque: c.manque
             });
         }
         return { groupeId, membres: lignes };

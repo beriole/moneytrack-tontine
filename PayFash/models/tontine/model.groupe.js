@@ -71,6 +71,19 @@ const TontineGroupe = db.define("TontineGroupe", {
             try { return JSON.parse(valeur); } catch (e) { return valeur; }
         }
     },
+    // Couverture exigee avant de recevoir le pot, en part de ce qui reste
+    // a payer : { tauxParDefaut, paliers: [{ jusquAuTour | jusquAuTiers, taux }] }.
+    // Null : aucune exigence. Voir services/tontine/couverture.service.js.
+    reglesCouverture: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: "Couverture exigee par rang de tour ; null = aucune exigence",
+        get() {
+            const valeur = this.getDataValue('reglesCouverture');
+            if (typeof valeur !== 'string') return valeur;
+            try { return JSON.parse(valeur); } catch (e) { return valeur; }
+        }
+    },
     portefeuilleId: {
         type: DataTypes.INTEGER,
         allowNull: true,
