@@ -9,6 +9,8 @@ const {
     portefeuilleClient, caisseGroupe, portefeuilleCaution,
     exigerRole, exigerGroupeActif, exigerGroupeNonGele, ecrireTransaction, transferer
 } = require('./commun');
+const { journaliser } = require('../audit.service');
+const { exigerActe } = require('./permissions');
 
 // =====================================================================
 //  Caution — le depot bloque a l'entree du groupe.
@@ -40,11 +42,14 @@ class CautionService {
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
             exigerGroupeActif(groupe, "le blocage d'une caution");
 
+            // Le controle etait ecrit ici : appartenance, puis le seul statut
+            // 'exclu'. Un membre suspendu ou sorti bloquait donc encore une
+            // caution sur un groupe qu'il avait quitte. L'acte nomme porte la
+            // regle complete, la meme que partout ailleurs.
+            await exigerActe('bloquerCaution', groupeId, clientId, t);
             const membre = await TontineMembre.findOne({
                 where: { groupeId, clientId }, transaction: t, lock: t.LOCK.UPDATE
             });
-            if (!membre) throw new ErreurTontine(403, "Vous n'etes pas membre de ce groupe");
-            if (membre.statut === 'exclu') throw new ErreurTontine(403, 'Vous etes exclu de ce groupe');
 
             const aBloquer = montant !== undefined && montant !== null
                 ? arrondir(montant)
@@ -118,8 +123,7 @@ class CautionService {
             exigerGroupeNonGele(groupe, "la saisie d'une caution");
 
             if (!acteur.systeme) {
-                await exigerRole(groupe.id, acteur.clientId, ['president', 'tresorier'], t,
-                    'saisir une caution');
+                await exigerActe('saisirCaution', groupe.id, acteur.clientId, t);
             }
 
             const caution = await TontineCaution.findOne({
@@ -167,6 +171,24 @@ class CautionService {
                 montantCollecte: arrondir(nombre(cycle.montantCollecte) + saisi)
             }, { transaction: t });
 
+            // Mobiliser la garantie de quelqu'un se justifie : qui l'a
+            // decide, pour quel impaye, et pour combien.
+            await journaliser({
+                acteur: acteur.systeme ? { systeme: true } : { clientId: acteur.clientId },
+                action: 'TONTINE_CAUTION_SAISIE',
+                cible: `TontineCaution#${caution.id}`,
+                details: {
+                    groupeId: groupe.id,
+                    cycleId: cycle.id,
+                    cotisationId: cotisation.id,
+                    clientVise: cotisation.clientId,
+                    montantSaisi: saisi,
+                    disponibleAvant: dispo,
+                    cotisationSoldee: solde
+                },
+                transaction: t
+            });
+
             return {
                 caution, cotisation, transaction,
                 groupeSaisi: groupe,
@@ -204,7 +226,7 @@ class CautionService {
             // administratif bloque la restitution.
             exigerGroupeNonGele(groupe, "la restitution d'une caution");
             if (!acteur.systeme) {
-                await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'liberer une caution');
+                await exigerActe('libererCaution', groupe.id, acteur.clientId, t);
             }
 
             // Une caution ne se libere pas au-dessus d'une dette en cours.
@@ -282,8 +304,7 @@ class CautionService {
     }
 
     static async cautionsGroupe(clientId, groupeId) {
-        await exigerRole(groupeId, clientId, ['president', 'tresorier', 'censeur'], null,
-            'consulter les cautions du groupe');
+        await exigerActe('consulterCautions', groupeId, clientId);
 
         const cautions = await TontineCaution.findAll({
             where: { groupeId },

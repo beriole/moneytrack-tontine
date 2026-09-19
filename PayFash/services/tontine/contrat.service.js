@@ -6,6 +6,7 @@ const {
     TontineGroupe, TontineMembre, TontineContrat, TontineSignature
 } = require('../../models');
 const { ErreurTontine, nombre, exigerRole } = require('./commun');
+const { exigerActe } = require('./permissions');
 
 // =====================================================================
 //  Le reglement interieur signe.
@@ -39,9 +40,9 @@ class ContratService {
             `3. Caution a l'entree : ${nombre(groupe.pourcentageCaution)} % de la cotisation.`,
             `4. Le beneficiaire du tour ne cotise pas pour son propre tour.`,
             `5. Amendes — retard : ${b.retard || 1000}, absence : ${b.absence || 2000}, indiscipline : ${b.indiscipline || 5000}.`,
-            `6. Les amendes alimentent : ${groupe.destinationAmendes === 'epargne' ? "la caisse d'epargne du groupe" : 'le pot du cycle en cours'}.`,
+            `6. Une amende indemnise le membre lese : elle grossit le pot du cycle concerne, ou revient a son beneficiaire si le pot est deja verse.`,
             `7. Une amende impayee bloque la cotisation suivante.`,
-            `8. En cas de defaut : amende, puis saisie de la caution, puis appel au garant, puis exclusion votee.`,
+            `8. En cas de defaut : amende de retard, puis saisie de la caution, puis exclusion votee.`,
             `9. Le versement du pot exige que toutes les cotisations du cycle soient soldees.`,
             `10. La caution est restituee une fois toutes les dettes eteintes.`
         ].join('\n');
@@ -55,8 +56,7 @@ class ContratService {
         return db.transaction(async (t) => {
             const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t, lock: t.LOCK.UPDATE });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
-            await exigerRole(groupeId, acteur.clientId, ['president', 'secretaire'], t,
-                'rediger le reglement interieur');
+            await exigerActe('genererReglement', groupeId, acteur.clientId, t);
 
             const texte = contenu && String(contenu).trim()
                 ? String(contenu).trim()

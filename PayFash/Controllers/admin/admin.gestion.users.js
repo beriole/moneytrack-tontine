@@ -1,7 +1,6 @@
-const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
 const {
-    Client, Portefeuille, Transaction, Epargne, Projet, Plan, Admin
+    Client, Portefeuille, Transaction, Epargne, Projet, Plan
 } = require('../../models/index');
 const { logAction } = require('./audit');
 
@@ -110,34 +109,17 @@ const supressionUtilisateur = async (req, res) => {
     }
 };
 
-// Helper interne pour créer un agent (admin avec rôle spécifique)
-const creerAgent = (role) => async (req, res) => {
-    const { nom, prenom, email, motDePasse } = req.body;
-    try {
-        if (!nom || !email || !motDePasse) {
-            return res.status(400).json({ success: false, error: 'Champs requis manquants' });
-        }
-        const exists = await Admin.findOne({ where: { email } });
-        if (exists) return res.status(400).json({ success: false, error: 'Cet email existe déjà' });
-
-        const hash = await bcrypt.hash(motDePasse, 10);
-        const agent = await Admin.create({ nom, prenom, email, motDePasse: hash, role });
-        await logAction(req, 'AGENT_CREATE', `Admin#${agent.id}`, { role });
-
-        return res.status(201).json({
-            success: true,
-            data: { id: agent.id, nom: agent.nom, email: agent.email, role: agent.role }
-        });
-    } catch (error) {
-        console.error('creerAgent:', error);
-        return res.status(500).json({ success: false, error: error.message });
-    }
-};
-
-const creerAgentKYC = creerAgent('AGENT_KYC');
-const creerAgentSeller = creerAgent('AGENT_SELLER');
+// L'agent KYC a ete retire de la conception : la verification d'identite est
+// une attribution de l'administration, portee par le role COMPLIANCE.
+//
+// Ce createur d'agent doublonnait POST /api/admin/auth/create — a une
+// difference pres, qui comptait : il n'avait AUCUNE garde de role. Monte
+// sous verifyAdmin seul, il permettait a n'importe quel administrateur,
+// MARKETING ou SUPPORT compris, de se fabriquer un compte habilite a
+// approuver les KYC. La creation d'un compte administrateur passe
+// desormais par la seule voie gardee, reservee au SUPER_ADMIN.
 
 module.exports = {
     listeUtilisateurs, detailsUtilisateurs, desactivation,
-    supressionUtilisateur, creerAgentKYC, creerAgentSeller
+    supressionUtilisateur
 };

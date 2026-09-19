@@ -6,6 +6,7 @@ const {
     TontineGroupe, TontineMembre, TontineCycle, TontineCotisation, TontineEnchere
 } = require('../../models');
 const { ErreurTontine, nombre, arrondir, exigerRole, exigerGroupeActif } = require('./commun');
+const { exigerActe } = require('./permissions');
 
 // =====================================================================
 //  L'enchere sur le pot.
@@ -61,7 +62,7 @@ class EnchereService {
             }
             exigerGroupeActif(groupe, "l'ouverture d'une enchere");
             if (!acteur.systeme) {
-                await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'ouvrir une enchere');
+                await exigerActe('ouvrirEnchere', groupe.id, acteur.clientId, t);
             }
 
             const limite = dateLimite ? new Date(dateLimite) : new Date(Date.now() + 24 * 3600 * 1000);
@@ -182,7 +183,7 @@ class EnchereService {
             const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
 
             if (!acteur.systeme) {
-                await exigerRole(groupe.id, acteur.clientId, ['president'], t, 'adjuger une enchere');
+                await exigerActe('adjugerEnchere', groupe.id, acteur.clientId, t);
             }
 
             if (!cycle.enchereOuverteJusqu) {

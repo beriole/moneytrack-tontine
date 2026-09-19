@@ -16,7 +16,6 @@ const SUJETS = {
   modifier_regles: 'Modifier les regles',
   dissoudre: 'Dissoudre la tontine',
   elire_ordre: "Elire l'ordre de passage",
-  approuver_credit: 'Approuver un credit',
 };
 const MODES = { majorite: 'Majorite simple', qualifiee: 'Majorite des deux tiers', unanimite: 'Unanimite' };
 
@@ -119,7 +118,7 @@ export default function VotesTontine() {
 
   if (!data) return <Chargement />;
 
-  const estBureau = groupe && ['president', 'secretaire'].includes(groupe.monRole);
+  const peutDepouiller = !!groupe?.permissions?.actes?.depouillerVote;
 
   return (
     <SafeAreaView style={s.page}>
@@ -155,7 +154,7 @@ export default function VotesTontine() {
                   <View style={{ flex: 1, marginRight: 6 }}>
                     <Bouton titre="Voter" icone="edit" charge={action === v.id} onPress={() => voter(v)} />
                   </View>
-                  {estBureau && (
+                  {peutDepouiller && (
                     <View style={{ flex: 1, marginLeft: 6 }}>
                       <Bouton
                         titre="Depouiller"

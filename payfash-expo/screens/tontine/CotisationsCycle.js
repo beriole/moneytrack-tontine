@@ -6,7 +6,7 @@ import { colors } from '../../theme';
 import s from './styleTontine';
 import { Pastille, Chargement, Info, Progression, Ligne } from './composants';
 import {
-  cotisationsCycle, etatRecouvrement, saisirCaution, appelerGarant,
+  cotisationsCycle, etatRecouvrement, saisirCaution,
   messageErreur, fcfa, dateCourte,
 } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
@@ -45,20 +45,14 @@ export default function CotisationsCycle() {
           onPress: () => executer(() => saisirCaution(cotisation.id)),
         });
       }
-      if (c.garant) {
-        options.push({
-          text: `Appeler le garant (${c.garant.nom})`,
-          onPress: () => executer(() => appelerGarant(cotisation.id)),
-        });
-      }
       options.push({ text: 'Fermer', style: 'cancel' });
 
       const lignes = [
         `Reste du : ${fcfa(data.resteADevoir)}`,
         c.amendeLevee ? `Amende de retard : ${c.amendeStatut}` : 'Aucune amende levee',
         c.cautionDisponible > 0 ? `Caution disponible : ${fcfa(c.cautionDisponible)}` : 'Caution epuisee ou absente',
-        c.garant ? `Garant : ${c.garant.nom}` : 'Aucun garant designe',
-      ];
+        c.exclusionPossible ? "Plus aucun recours en argent : reste l'exclusion, prononcee par le president." : '',
+      ].filter(Boolean);
       Alert.alert(
         `Recouvrement — ${cotisation.client?.nom || 'membre'}`,
         lignes.join('\n'),
@@ -107,9 +101,9 @@ export default function CotisationsCycle() {
         </View>
 
         {etat.potComplet ? (
-          <Info texte="Le pot est complet : le president ou le tresorier peut declencher le versement." />
+          <Info texte="Le pot est complet : le president peut declencher le versement." />
         ) : (
-          <Info texte="Le versement reste bloque tant qu'une cotisation n'est pas soldee. Touchez un retardataire pour voir les recours disponibles : caution, garant." />
+          <Info texte="Le versement reste bloque tant qu'une cotisation n'est pas soldee. Touchez un retardataire pour voir les recours disponibles : la caution, puis l'exclusion." />
         )}
 
         {etat.cotisations.map((c) => {

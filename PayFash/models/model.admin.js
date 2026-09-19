@@ -28,9 +28,7 @@ const Admin = db.define("Admin", {
             'ADMIN_FINANCE',
             'SUPPORT',
             'COMPLIANCE',
-            'MARKETING',
-            'AGENT_KYC',
-            'AGENT_SELLER'
+            'MARKETING'
         ),
         allowNull: false,
         defaultValue: 'SUPPORT'

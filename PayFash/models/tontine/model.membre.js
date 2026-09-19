@@ -11,15 +11,20 @@ const TontineMembre = db.define("TontineMembre", {
         allowNull: false
     },
     role: {
-        type: DataTypes.ENUM('president', 'tresorier', 'censeur', 'secretaire', 'membre'),
+        type: DataTypes.ENUM('president', 'membre'),
         allowNull: false,
         defaultValue: 'membre',
-        comment: "Bureau : le censeur inflige les amendes, le tresorier encaisse"
+        comment: "Une seule charge humaine : le president. Censeur, secretaire puis tresorier ont ete retires — ce qui relevait de la decision revient au president, ce qui relevait de l'execution (encaisser, saisir, decaisser, depouiller) revient au systeme. Le role est porte par l'adhesion, jamais par le compte : on preside un groupe, pas l'application."
     },
     statut: {
-        type: DataTypes.ENUM('invite', 'actif', 'suspendu', 'exclu'),
+        // 'sorti' et 'termine' manquaient : quitter un groupe n'etait
+        // representable que par une exclusion — un depart volontaire
+        // prenait la couleur d'une sanction — et un membre restait 'actif'
+        // indefiniment dans une tontine achevee.
+        type: DataTypes.ENUM('invite', 'actif', 'suspendu', 'exclu', 'sorti', 'termine'),
         allowNull: false,
-        defaultValue: 'invite'
+        defaultValue: 'invite',
+        comment: "invite/actif/suspendu = en cours ; exclu = sanction, sorti = depart volontaire, termine = rotation achevee"
     },
     cautionPayee: {
         type: DataTypes.BOOLEAN,
@@ -40,11 +45,6 @@ const TontineMembre = db.define("TontineMembre", {
         type: DataTypes.SMALLINT,
         allowNull: true,
         comment: "Rang dans la rotation, attribue au demarrage du groupe"
-    },
-    garantId: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: "Client qui se porte aval pour ce membre (cascade de recours)"
     },
     nbAvertissements: {
         type: DataTypes.SMALLINT,

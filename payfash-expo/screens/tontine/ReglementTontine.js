@@ -18,13 +18,13 @@ export default function ReglementTontine() {
 
   const [data, setData] = useState(null);
   const [absent, setAbsent] = useState(false);
-  const [role, setRole] = useState(null);
+  const [actes, setActes] = useState({});
   const [action, setAction] = useState(false);
 
   const charger = useCallback(async () => {
     try {
       const { data: g } = await detailGroupe(groupeId);
-      setRole(g.monRole);
+      setActes(g.permissions?.actes || {});
       const { data: d } = await reglementCourant(groupeId);
       setData(d);
       setAbsent(false);
@@ -51,7 +51,7 @@ export default function ReglementTontine() {
 
   if (!data && !absent) return <Chargement />;
 
-  const peutRediger = ['president', 'secretaire'].includes(role);
+  const peutRediger = !!actes.genererReglement;
 
   return (
     <SafeAreaView style={s.page}>

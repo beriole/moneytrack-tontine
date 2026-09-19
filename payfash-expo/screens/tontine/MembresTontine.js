@@ -5,14 +5,11 @@ import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../theme';
 import s, { carteHaute } from './styleTontine';
 import { Pastille, Chargement, Info } from './composants';
-import { detailGroupe, designerGarant, messageErreur, fcfa } from '../../utils/tontineApi';
+import { detailGroupe, transmettrePresidence, messageErreur, fcfa } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
 
 const ICONE_ROLE = {
   president: 'crown',
-  tresorier: 'cash-register',
-  censeur: 'gavel',
-  secretaire: 'notebook',
   membre: 'account',
 };
 
@@ -33,33 +30,32 @@ export default function MembresTontine() {
 
   useFocusEffect(useCallback(() => { charger(); }, [charger]));
 
-  const choisirGarant = (membre) => {
-    const candidats = data.groupe.membres.filter((m) => m.statut === 'actif' && m.clientId !== membre.clientId);
-    if (!candidats.length) return Alert.alert('Aucun candidat', 'Il faut un autre membre actif pour se porter garant.');
+  if (!data) return <Chargement />;
+  const { groupe, permissions } = data;
+  const peutTransmettre = !!permissions?.actes?.transmettrePresidence;
 
+  const transmettre = (m) => {
     Alert.alert(
-      'Choisir mon garant',
-      "Ce membre couvrira vos cotisations en cas de defaut. C'est un engagement reel de sa part.",
+      'Transmettre la presidence',
+      `${m.client?.nom || 'Ce membre'} dirigera la tontine a votre place. Vous redeviendrez simple membre : `
+        + 'vous ne pourrez plus demarrer un cycle, sanctionner ni verser le pot.',
       [
-        ...candidats.slice(0, 3).map((c) => ({
-          text: c.client?.nom || `Membre ${c.clientId}`,
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Transmettre',
+          style: 'destructive',
           onPress: async () => {
             try {
-              await designerGarant(groupeId, c.clientId);
+              await transmettrePresidence(groupeId, m.clientId);
               await charger();
-              Alert.alert('Garant enregistre', `${c.client?.nom} se porte garant pour vous.`);
             } catch (e) {
-              Alert.alert('Impossible', messageErreur(e));
+              Alert.alert('Passation impossible', messageErreur(e));
             }
           },
-        })),
-        { text: 'Annuler', style: 'cancel' },
+        },
       ]
     );
   };
-
-  if (!data) return <Chargement />;
-  const { groupe } = data;
   const membres = [...(groupe.membres || [])].sort(
     (a, b) => (a.ordreBeneficiaire ?? 99) - (b.ordreBeneficiaire ?? 99)
   );
@@ -116,6 +112,17 @@ export default function MembresTontine() {
                 <Pastille statut={m.statut} />
               </View>
 
+              {peutTransmettre && !estMoi && m.statut === 'actif' && m.role !== 'president' && (
+                <TouchableOpacity onPress={() => transmettre(m)} style={{ marginTop: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialCommunityIcons name="crown-outline" size={14} color={colors.accent} />
+                    <Text style={{ color: colors.accent, fontSize: 12, marginLeft: 6 }}>
+                      Lui transmettre la presidence
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+
               <View style={{ flexDirection: 'row', marginTop: 12, flexWrap: 'wrap' }}>
                 <Etiquette
                   icone={m.cautionPaye || m.cautionPayee ? 'lock-check' : 'lock-open-variant'}
@@ -125,21 +132,15 @@ export default function MembresTontine() {
                 {m.nbAvertissements > 0 && (
                   <Etiquette icone="alert" texte={`${m.nbAvertissements} avertissement(s)`} couleur={colors.warning} />
                 )}
-                {m.garantId && <Etiquette icone="account-check" texte="Garant designe" couleur={colors.accent} />}
               </View>
-
-              {estMoi && !m.garantId && (
-                <TouchableOpacity onPress={() => choisirGarant(m)} style={{ marginTop: 12 }}>
-                  <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                    + Designer mon garant
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           );
         })}
 
         <Info texte="Le numero est l'ordre de passage. Un membre exclu sort de la file et les tours restants se resserrent : personne ne saute son tour." />
+        {peutTransmettre && (
+          <Info texte="La presidence se transmet a un membre actif. Elle ne se partage pas : en la donnant, vous la perdez." />
+        )}
       </ScrollView>
     </SafeAreaView>
   );

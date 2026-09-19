@@ -1,6 +1,7 @@
 'use strict';
 
 const { Portefeuille, Transaction } = require('../../models');
+const Fonds = require('../fonds.service');
 
 // =====================================================================
 //  Briques partagees par les services tontine.
@@ -70,8 +71,8 @@ async function caisseGroupe(groupe, t, verrouiller = false) {
 }
 
 /**
- * Portefeuille auxiliaire d'un groupe (sequestre de caution, caisse
- * d'epargne), cree a la demande. La creation paresseuse evite d'imposer
+ * Portefeuille auxiliaire d'un groupe (le sequestre des cautions), cree a
+ * la demande. La creation paresseuse evite d'imposer
  * une migration de donnees aux groupes deja existants.
  */
 async function portefeuilleAuxiliaire(groupe, champ, libelle, t, verrouiller = false) {
@@ -108,29 +109,34 @@ function portefeuilleCaution(groupe, t, verrouiller = false) {
     return portefeuilleAuxiliaire(groupe, 'portefeuilleCautionId', 'Cautions', t, verrouiller);
 }
 
-/** Caisse d'epargne du groupe (caisse 2). */
-function portefeuilleEpargne(groupe, t, verrouiller = false) {
-    return portefeuilleAuxiliaire(groupe, 'portefeuilleEpargneId', 'Epargne', t, verrouiller);
-}
 
 /**
  * Charge l'adhesion du client et controle qu'elle porte un des roles
- * attendus. Le bureau d'une tontine n'est pas decoratif : seul le censeur
- * inflige une amende, seul le tresorier encaisse, seul le president
- * demarre un cycle.
+ * attendus. La charge n'est pas decorative : le president demarre un cycle,
+ * sanctionne, arbitre et prononce une exclusion.
+ *
+ * La question est toujours posee POUR UN GROUPE : le meme client preside
+ * l'un et n'est que membre de l'autre. C'est l'adhesion qui porte le role,
+ * jamais le compte.
+ *
+ * La liste des roles n'est plus ecrite sur les sites d'appel : ils declarent
+ * un acte, et permissions.js dit qui peut le poser.
+ *
+ * Le createur du groupe beneficiait ici d'une exception permanente — il
+ * gardait les prerogatives du president « meme si le role a ete
+ * reattribue ». Elle rendait toute passation fictive : l'ancien president
+ * conservait ses pouvoirs sans qu'aucune colonne ne le dise, et deux
+ * personnes presidaient sans que l'une des deux soit visible. La
+ * presidence se lit maintenant a un seul endroit, TontineMembre.role, et
+ * se transmet par PresidenceService.
  */
 async function exigerRole(groupeId, clientId, roles, t, action = 'cette action') {
-    const { TontineMembre, TontineGroupe } = require('../../models');
+    const { TontineMembre } = require('../../models');
     const membre = await TontineMembre.findOne({ where: { groupeId, clientId }, transaction: t });
     if (!membre) throw new ErreurTontine(403, "Vous n'etes pas membre de ce groupe");
 
     if (!roles || !roles.length) return membre;
     if (roles.includes(membre.role)) return membre;
-
-    // Le createur garde les prerogatives du president meme si le role a
-    // ete reattribue : il reste responsable du groupe.
-    const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t });
-    if (groupe && groupe.createurId === clientId && roles.includes('president')) return membre;
 
     throw new ErreurTontine(403, `Reserve a : ${roles.join(', ')} — ${action}`);
 }
@@ -198,18 +204,23 @@ async function ecrireTransaction(donnees, t) {
  * charges avec un verrou.
  */
 async function transferer(source, destination, montant, t) {
-    const m = arrondir(montant);
-    if (m <= 0) throw new ErreurTontine(400, 'Le montant doit etre strictement positif');
-    if (arrondir(source.solde) < m) {
-        throw new ErreurTontine(402, `Solde insuffisant : ${arrondir(source.solde)} disponible, ${m} requis`);
+    // La regle du disponible vit dans services/fonds.service.js, commune a
+    // toutes les sorties d'argent du projet. Ce transfert comparait le
+    // montant au solde brut : une fois des fonds bloques en garantie, une
+    // cotisation aurait pu les consommer.
+    //
+    // L'erreur est retraduite en ErreurTontine pour que les controleurs du
+    // module, qui ne connaissent qu'elle, gardent le bon code HTTP.
+    try {
+        return await Fonds.transferer(source, destination, montant, t);
+    } catch (e) {
+        if (e instanceof Fonds.ErreurFonds) throw new ErreurTontine(e.code, e.message);
+        throw e;
     }
-    await source.update({ solde: arrondir(nombre(source.solde) - m) }, { transaction: t });
-    await destination.update({ solde: arrondir(nombre(destination.solde) + m) }, { transaction: t });
-    return m;
 }
 
 module.exports = {
     ErreurTontine, nombre, arrondir,
-    portefeuilleClient, caisseGroupe, portefeuilleCaution, portefeuilleEpargne,
+    portefeuilleClient, caisseGroupe, portefeuilleCaution,
     exigerRole, exigerGroupeActif, exigerGroupeNonGele, ecrireTransaction, transferer
 };

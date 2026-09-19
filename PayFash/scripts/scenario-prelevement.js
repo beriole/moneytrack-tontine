@@ -83,7 +83,7 @@ async function notifsDe(clientId, depuis) {
     try {
         titre('1. Un groupe, quatre membres, une echeance');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete', pourcentageCaution: 0,
             bareme: { retard: 1500, absence: 2000, indiscipline: 5000, autre: 1000 }
         });
@@ -148,8 +148,7 @@ async function notifsDe(clientId, depuis) {
 
         titre('5. Les amendes passent avant la cotisation');
         // On inflige une amende au troisieme, puis on lui donne mandat.
-        const censeur = await TontineMembre.findOne({ where: { groupeId: groupe.id, clientId: awa.id } });
-        await censeur.update({ role: 'censeur' });
+        // Awa a cree le groupe : elle le preside, et sanctionne a ce titre.
         const amende = await AmendeService.infliger({ clientId: awa.id }, groupe.id,
             { clientId: troisieme.clientId, motif: 'absence' });
         await PrelevementService.activer(troisieme.clientId, groupe.id, { joursAvant: 2 });

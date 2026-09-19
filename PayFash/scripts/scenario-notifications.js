@@ -78,7 +78,7 @@ async function dernierId() {
         // =============================================================
         titre('1. Le demarrage previent tout le monde');
         groupe = await GroupeService.creerGroupe(awa.id, {
-            nom: NOM, type: 'rotative', montantParPeriode: MONTANT,
+            nom: NOM, montantParPeriode: MONTANT,
             frequence: 'mensuelle', membresMax: 4, modeOrdre: 'anciennete', pourcentageCaution: 0,
             bareme: { retard: 1200, absence: 2000, indiscipline: 5000, autre: 1000 }
         });
@@ -157,8 +157,7 @@ async function dernierId() {
 
         // Une amende infligee a la main previent aussi.
         const avantAmende = await dernierId();
-        const censeur = await TontineMembre.findOne({ where: { groupeId: groupe.id, clientId: awa.id } });
-        await censeur.update({ role: 'censeur' });
+        // Awa a cree le groupe : elle le preside, et sanctionne a ce titre.
         const amende = await AmendeService.infliger({ clientId: awa.id }, groupe.id,
             { clientId: daniel.id, motif: 'absence' });
         const nAmende = await notifsDe(daniel.id, avantAmende);
