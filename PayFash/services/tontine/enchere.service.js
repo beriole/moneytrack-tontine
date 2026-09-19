@@ -116,6 +116,12 @@ class EnchereService {
             if (!membre) throw new ErreurTontine(403, "Vous n'etes pas membre actif de ce groupe");
             if (membre.aBeneficie) throw new ErreurTontine(409, 'Vous avez deja mange : vous ne pouvez plus encherir');
 
+            // Une offre elevee ne doit pas contourner les protections : on
+            // n'encherit que pour un pot qu'on pourrait recevoir. Sans ce
+            // controle, un membre non couvert remportait l'enchere et le pot
+            // restait ensuite bloque au versement.
+            await require('./eligibilite.service').exiger(clientId, 'enchere', { groupe, cycle, membre, t });
+
             const attendu = arrondir(cycle.montantAttendu);
             if (decote >= attendu) {
                 throw new ErreurTontine(400, `La decote doit rester inferieure au pot (${attendu} FCFA)`);

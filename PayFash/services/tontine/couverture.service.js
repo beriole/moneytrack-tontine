@@ -196,8 +196,9 @@ class CouvertureService {
                 where: { groupeId, ordreBeneficiaire: { [Op.ne]: null } }, transaction: t
             });
         // Avant le tirage, le tour est inconnu : on applique l'exigence du
-        // pire cas, celle du premier tour.
-        const tour = membre.ordreBeneficiaire || (groupe.statut === 'en_attente' ? 1 : null);
+        // pire cas, celle du premier tour. Une enchere, elle, vise un tour
+        // precis — celui du cycle mis aux encheres.
+        const tour = options.tour || membre.ordreBeneficiaire || (groupe.statut === 'en_attente' ? 1 : null);
         const tauxExige = this.tauxExige(groupe, tour, taille);
         const montantExige = arrondir(exposition.exposition * tauxExige / 100);
         const manque = arrondir(Math.max(0, montantExige - couvert));
@@ -214,25 +215,6 @@ class CouvertureService {
             suffisant: manque <= 0,
             regle: this.decrire(groupe, taille)
         };
-    }
-
-    /**
-     * La couverture exigee au moment de verser le pot a son beneficiaire.
-     *
-     * C'est le moment critique : juste apres, il n'aura plus d'interet a
-     * cotiser. Le calcul est refait ICI, dans la transaction du versement,
-     * et non repris d'un etat anterieur. L'exposition du beneficiaire ne
-     * compte deja plus le cycle en cours — il n'y cotise pas — : c'est ce
-     * qu'il devra encore APRES avoir recu le pot.
-     */
-    static async exigerPourVersement(beneficiaireId, groupe, t) {
-        const c = await this.pourMembre(beneficiaireId, groupe.id, { t, groupe });
-        if (c.suffisant) return c;
-        throw new ErreurTontine(409,
-            `Versement suspendu : le beneficiaire doit encore ${c.exposition} FCFA au groupe apres ce tour, `
-            + `et le reglement exige qu'il en garantisse ${c.tauxExige} % (${c.montantExige} FCFA). `
-            + `Il en couvre ${c.couvert} FCFA : il manque ${c.manque} FCFA de garantie. `
-            + `Le pot sera verse des qu'il aura complete sa couverture.`);
     }
 }
 

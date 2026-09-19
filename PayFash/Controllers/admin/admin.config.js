@@ -1,16 +1,11 @@
 const { SystemConfig } = require('../../models/index');
 const { logAction } = require('./audit');
 
-const cast = (c) => {
-    if (c.type === 'number') return parseFloat(c.valeur);
-    if (c.type === 'boolean') return c.valeur === 'true';
-    return c.valeur;
-};
+const { typer: cast, lire } = require('../../services/config.service');
 
 // Helper réutilisable : lit une valeur de config typée, avec défaut.
 async function getConfigValue(cle, defaut = null) {
-    const c = await SystemConfig.findOne({ where: { cle } });
-    return c ? cast(c) : defaut;
+    return lire(cle, defaut);
 }
 
 // GET /api/admin/config/config

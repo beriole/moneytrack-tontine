@@ -2,6 +2,7 @@
 const { Op } = require('sequelize');
 const { Client, photo } = require('../../models/index');
 const { logAction } = require('./audit');
+const KycService = require('../../services/kyc.service');
 
 // GET /api/admin/kyc/demandeAky?page&limit  — clients en attente de vérification
 const listeDemande = async (req, res) => {
@@ -46,15 +47,15 @@ const detailsDemande = async (req, res) => {
 };
 
 // PATCH /api/admin/kyc/demandeAkyc/:id/approuve
+//
+// Niveau 2, pour la duree de validite configuree. Exige une piece deposee :
+// l'approbation n'en verifiait aucune.
 const approuverDemande = async (req, res) => {
     try {
-        const client = await Client.findByPk(req.params.id);
-        if (!client) return res.status(404).json({ success: false, error: 'Client introuvable' });
-
-        client.isVerified = true;
-        await client.save();
-        await logAction(req, 'KYC_APPROVE', `Client#${client.id}`);
-        return res.json({ success: true, message: 'Demande KYC approuvée', data: { id: client.id, isVerified: true } });
+        const r = await KycService.approuver(req.params.id);
+        if (r.erreur) return res.status(r.erreur).json({ success: false, error: r.message });
+        await logAction(req, 'KYC_APPROVE', `Client#${r.client.id}`, { expireLe: r.etat.expireLe });
+        return res.json({ success: true, message: 'Identite verifiee', data: { id: r.client.id, ...r.etat } });
     } catch (error) {
         console.error('KYC approuver:', error);
         return res.status(500).json({ success: false, error: error.message });
@@ -62,15 +63,15 @@ const approuverDemande = async (req, res) => {
 };
 
 // PATCH /api/admin/kyc/demandeAkyc/:id/rejeter   body: { motif }
+//
+// Retire l'identite verifiee, pas la confirmation de l'email : le rejet
+// mettait isVerified a faux.
 const rejeteDemande = async (req, res) => {
     try {
-        const client = await Client.findByPk(req.params.id);
-        if (!client) return res.status(404).json({ success: false, error: 'Client introuvable' });
-
-        client.isVerified = false;
-        await client.save();
-        await logAction(req, 'KYC_REJECT', `Client#${client.id}`, { motif: req.body?.motif || null });
-        return res.json({ success: true, message: 'Demande KYC rejetée', data: { id: client.id, motif: req.body?.motif || null } });
+        const r = await KycService.rejeter(req.params.id);
+        if (r.erreur) return res.status(r.erreur).json({ success: false, error: r.message });
+        await logAction(req, 'KYC_REJECT', `Client#${r.client.id}`, { motif: req.body?.motif || null });
+        return res.json({ success: true, message: 'Demande KYC rejetee', data: { id: r.client.id, motif: req.body?.motif || null, ...r.etat } });
     } catch (error) {
         console.error('KYC rejeter:', error);
         return res.status(500).json({ success: false, error: error.message });

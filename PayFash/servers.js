@@ -75,6 +75,7 @@ server.use("/api/admin/notification",verifyAdmin,AdminNotifManager);
 server.use("/api/admin/validation",verifyAdmin,AdminValidationManager);
 server.use("/api/admin/tontine",verifyAdmin,require('./router/admin/tontine.admin'));
 server.use("/api/admin/export",verifyAdmin,AdminExportManager);
+server.use("/api/admin/restriction",verifyAdmin,require('./router/admin/restrictions.admin'));
 server.use("/api/admin/kyc",verifyAdmin,AdminKYCmanager);
 server.use("/api/admin/transaction",verifyAdmin,AdminTransactionManager);
 //  /produit gere en realite le catalogue des PLANS d'abonnement, pas des

@@ -45,10 +45,27 @@ const client=bd.define("client",{
         allowNull:false,
         defaultValue:DataTypes.NOW
     },
+    // Email confirme par code OTP. Ne dit rien de l'identite : c'est
+    // niveauKyc qui distingue une identite verifiee sur piece.
     isVerified:{
         type:DataTypes.BOOLEAN,
         allowNull:false,
         defaultValue:false
+    },
+    // 0 rien, 1 email confirme, 2 identite verifiee par un agent sur piece.
+    // Voir services/kyc.service.js : le niveau 2 expire (kycExpireLe).
+    niveauKyc:{
+        type:DataTypes.TINYINT,
+        allowNull:false,
+        defaultValue:0
+    },
+    kycVerifieLe:{
+        type:DataTypes.DATE,
+        allowNull:true
+    },
+    kycExpireLe:{
+        type:DataTypes.DATE,
+        allowNull:true
     }
 
 },{timesTamp:true});

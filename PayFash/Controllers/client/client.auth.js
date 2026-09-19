@@ -13,6 +13,7 @@ const ENV=require('../../config/index');
 const { error } = require('console');
 const Litige=require('../../models/model.litige');
 const portefeuille=require('../../models/model.portefeuile')
+const KycService = require('../../services/kyc.service');
 // =====================================================================
 //  Envoi d'e-mails.
 //
@@ -319,7 +320,9 @@ const verifyOtp= async (req,res)=>{
                
                 res.status(500).json({message:"votre code a expirer veuillez demander un nouveau code"});
             }else{
-                await Client.update({isVerified:true},{where:{email:email}});
+                // Niveau 1 seulement : un email confirme n'est pas une
+                // identite verifiee. Voir services/kyc.service.js.
+                await KycService.marquerEmailConfirme(email);
                  res.status(200).json({message:"votre email est verifie avec succes"});
             }
             await exist.destroy();

@@ -1,6 +1,12 @@
 const GarantieService = require('../../services/tontine/garantie.service');
 const ExpositionService = require('../../services/tontine/exposition.service');
 const CouvertureService = require('../../services/tontine/couverture.service');
+const EligibiliteService = require('../../services/tontine/eligibilite.service');
+const KycService = require('../../services/kyc.service');
+const { RestrictionService } = require('../../services/restriction.service');
+const { exigerActe } = require('../../services/tontine/permissions');
+const { TontineGroupe, TontineCycle } = require('../../models');
+const { Op } = require('sequelize');
 const { repondreErreur } = require('./tontine.groupe');
 
 // =====================================================================
@@ -30,6 +36,41 @@ const expositionGroupe = async (req, res) => {
 const couvertureGroupe = async (req, res) => {
     try {
         return res.status(200).json(await CouvertureService.pourMembre(req.user.id, req.params.groupeId));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/groupes/:groupeId/eligibilite?operation=versement|enchere
+//
+// Ce que l'ecran montre AVANT que le membre tente l'operation : chaque
+// controle, et pour ceux qui echouent, ce qui manque. Rien n'est decide
+// ni conserve ici — la decision se prend, et se trace, au moment de l'acte.
+const eligibilite = async (req, res) => {
+    try {
+        const operation = req.query.operation || 'versement';
+        if (!['versement', 'enchere'].includes(operation)) {
+            return res.status(400).json({ error: "operation attendue : 'versement' ou 'enchere'" });
+        }
+        await exigerActe('consulter', req.params.groupeId, req.user.id);
+        const groupe = await TontineGroupe.findByPk(req.params.groupeId);
+        const cycle = await TontineCycle.findOne({
+            where: { groupeId: groupe.id, statut: { [Op.ne]: 'complete' } },
+            order: [['numeroCycle', 'DESC']]
+        });
+        return res.status(200).json(await EligibiliteService.evaluer(req.user.id, operation, { groupe, cycle, lecteur: 'membre' }));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// GET /tontine/moi/situation
+//
+// Niveau de verification et restrictions en vigueur : ce qui limite le
+// compte, dit en clair.
+const maSituation = async (req, res) => {
+    try {
+        const restrictions = await RestrictionService.actives(req.user.id);
+        return res.status(200).json({
+            kyc: KycService.etat(req.user),
+            restrictions: restrictions.map(r => RestrictionService.vue(r))
+        });
     } catch (e) { return repondreErreur(res, e); }
 };
 
@@ -108,6 +149,7 @@ const garantiesGroupe = async (req, res) => {
 };
 
 module.exports = {
-    monExposition, expositionGroupe, couvertureGroupe, modelesCouverture, sources, simulation, affecter,
+    monExposition, expositionGroupe, couvertureGroupe, modelesCouverture, eligibilite, maSituation,
+    sources, simulation, affecter,
     mesGaranties, detail, liberer, garantiesGroupe
 };
