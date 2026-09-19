@@ -8,7 +8,7 @@
     "seed:tontine": "node scripts/seed-tontine-demo.js",
     "test": "npm run test:unitaires && npm run verifier && npm run test:scenarios",
     "test:unitaires": "node --test tests/",
-    "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js && node scripts/scenario-garanties.js && node scripts/scenario-couverture.js && node scripts/scenario-eligibilite.js && node scripts/scenario-defauts.js && node scripts/scenario-liberation.js && node scripts/scenario-risque.js",
+    "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js && node scripts/scenario-garanties.js && node scripts/scenario-couverture.js && node scripts/scenario-eligibilite.js && node scripts/scenario-defauts.js && node scripts/scenario-liberation.js && node scripts/scenario-risque.js && node scripts/scenario-admin-http.js",
     "test:paiement": "node scripts/scenario-paiement.js"
   },
   "keywords": [],

@@ -18,6 +18,7 @@ const { requireRole } = require('../../middleware/verifyAdmin');
 // --- Consultation ---
 route.get('/stats', CONTROLLER.stats);
 route.get('/anomalies', CONTROLLER.anomalies);
+route.get('/incidents', CONTROLLER.incidents);
 route.get('/groupes', CONTROLLER.listeGroupes);
 route.get('/groupes/:id', CONTROLLER.detailGroupe);
 route.get('/membres/:clientId', CONTROLLER.ficheClient);

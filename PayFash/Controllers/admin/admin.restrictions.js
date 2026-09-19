@@ -24,6 +24,20 @@ function repondre(res, e) {
 // GET /api/admin/restriction/types
 const types = async (req, res) => res.json({ success: true, data: RestrictionService.types() });
 
+// GET /api/admin/restriction — toutes celles en vigueur
+const enVigueur = async (req, res) => {
+    try {
+        const liste = await RestrictionService.toutesEnVigueur();
+        return res.json({
+            success: true,
+            data: liste.map(r => ({
+                ...RestrictionService.vue(r),
+                client: r.client ? { id: r.client.id, nom: r.client.nom, email: r.client.email } : null
+            }))
+        });
+    } catch (e) { return repondre(res, e); }
+};
+
 // GET /api/admin/restriction/client/:clientId
 //
 // Tout ce qui limite un client, et pourquoi : niveau KYC, restrictions en
@@ -75,4 +89,4 @@ const lever = async (req, res) => {
     } catch (e) { return repondre(res, e); }
 };
 
-module.exports = { types, situationClient, poser, lever };
+module.exports = { types, enVigueur, situationClient, poser, lever };

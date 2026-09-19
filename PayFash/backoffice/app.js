@@ -123,6 +123,8 @@ const TEINTES = {
     en_attente: 'warning', EN_ATTENTE: 'warning', partielle: 'warning', PENDING: 'warning',
     'En confirmation': 'warning', A_VERIFIER: 'warning', 'A verifier': 'warning', ouvert: 'warning',
     termine: 'neutre', annulee: 'neutre', REFUNDED: 'neutre', 'remboursée': 'neutre',
+    regle: 'succes', FAIBLE: 'succes', MODERE: 'warning', ELEVE: 'danger',
+    ELIGIBLE: 'succes', NON_ELIGIBLE: 'danger',
 };
 
 const pastille = (valeur) => {
@@ -152,7 +154,8 @@ function toast(message, genre = 'info') {
 
 const voile = () => document.getElementById('voile');
 
-function ouvrirModale(html) {
+function ouvrirModale(html, large = false) {
+    document.getElementById('modale').classList.toggle('large', large);
     document.getElementById('modale').innerHTML = html;
     voile().classList.add('visible');
 }
@@ -233,6 +236,7 @@ const ICONES = {
     aml: '<path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/>',
     plans: '<path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2h18zM3 10v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8H3zm4 6h4v-2H7v2z"/>',
     notifications: '<path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5a6 6 0 0 0-5-5.9V4a1 1 0 1 0-2 0v1.1A6 6 0 0 0 6 11v5l-2 2v1h16v-1l-2-2z"/>',
+    defauts: '<path d="M12 2 2 7v6c0 5 4.3 8.7 10 9 5.7-.3 10-4 10-9V7L12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/>',
     config: '<path d="m19.4 13-.1-1 .1-1 2-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L14.8 3H9.2l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4 2 1.6-.1 1 .1 1-2 1.6 2 3.4 2.5-1c.5.4 1.1.8 1.7 1l.4 2.9h5.6l.4-2.9c.6-.2 1.2-.6 1.7-1l2.5 1 2-3.4-2-1.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>',
     admins: '<path d="M12 1 3 5v6c0 5.6 3.8 10.7 9 12 5.2-1.3 9-6.4 9-12V5l-9-4zm0 6a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zm0 6.5c1.7 0 5 .9 5 2.5v1.4A9.6 9.6 0 0 1 12 20a9.6 9.6 0 0 1-5-2.6V16c0-1.6 3.3-2.5 5-2.5z"/>',
 };
@@ -245,6 +249,7 @@ const MENU = [
     { id: 'utilisateurs', titre: 'Utilisateurs' },
     { id: 'kyc', titre: 'Vérifications KYC' },
     { id: 'litiges', titre: 'Litiges' },
+    { id: 'defauts', titre: 'Défauts et restrictions' },
     { groupe: 'Finance' },
     { id: 'transactions', titre: 'Transactions' },
     { id: 'validations', titre: 'Validations' },
@@ -527,6 +532,7 @@ PAGES.kyc = async (params = {}) => {
         <tr>
             <td><strong>${echapper(c.nom)}</strong><div class="faible">${echapper(c.email)}</div></td>
             <td class="mono">${echapper(c.telephone || '—')}</td>
+            <td>${echapper(c.kyc?.libelle || '—')}${c.kyc?.expire ? ' <span class="pastille p-warning">expirée</span>' : ''}</td>
             <td>${date(c.createdAt)}</td>
             <td class="actions">
                 <button class="bouton fantome petit" data-action="kyc-detail" data-id="${c.id}">Instruire</button>
@@ -536,18 +542,87 @@ PAGES.kyc = async (params = {}) => {
         </tr>`);
 
     return `
-        ${enTete('Vérifications KYC', "File des comptes en attente de vérification d'identité.")}
+        ${enTete('Vérifications KYC', "Comptes qui ont déposé une pièce d'identité et attendent la vérification (niveau 2).")}
 
         <div class="info">
-            <div class="titre">Ce que la vérification débloque</div>
-            Un compte non vérifié peut utiliser l'application, mais ne peut <strong>ni recharger ni retirer</strong>.
-            La connexion, elle, reste ouverte : la fermer mettrait dehors les comptes déjà créés.
+            <div class="titre">Ce que chaque niveau permet</div>
+            <strong>Niveau 1 — email confirmé</strong> (par code, sans instruction) : recharger et retirer.
+            <strong>Niveau 2 — identité vérifiée</strong> sur pièce, pour une durée limitée : exigé seulement pour les opérations
+            de tontine où la configuration le demande (paramètres <span class="mono">tontine_kyc_niveau_*</span>, à 0 par défaut).
+            Approuver exige une pièce déposée ; rejeter retire l'identité, pas la confirmation d'email.
+            Aucun parcours de dépôt de pièce n'existe encore dans l'application : tant qu'il manque, cette file reste vide.
         </div>
 
         <div class="carte">
             <h3>En attente (${nombre(reponse.meta?.total ?? demandes.length)})</h3>
-            ${tableau(['Client', 'Téléphone', 'Inscrit le', ''], lignes)}
+            ${tableau(['Client', 'Téléphone', 'Niveau actuel', 'Inscrit le', ''], lignes)}
             ${pagination(reponse.meta, 'page-kyc')}
+        </div>`;
+};
+
+/* ---------------------------------------------------- Defauts et restrictions */
+PAGES.defauts = async (params = {}) => {
+    const statut = params.statut ?? 'ouvert';
+    const [inc, restr] = await Promise.all([
+        api(`/tontine/incidents${statut ? '?statut=' + statut : ''}`),
+        api('/restriction'),
+    ]);
+    const r = inc.resume || {};
+    const sources = (liste) => (liste || [])
+        .map((a) => `${echapper(a.source)} ${a.montant > 0 ? fcfa(a.montant) : '—'}`).join(' · ') || '—';
+
+    const lignesIncidents = (inc.incidents || []).map((i) => `
+        <tr>
+            <td><strong>${echapper(i.client?.nom || 'client ' + i.clientId)}</strong><div class="faible">${echapper(i.client?.email || '')}</div></td>
+            <td>${echapper(i.groupe || '—')}</td>
+            <td class="num">${fcfa(i.resteDu)}<div class="faible">sur ${fcfa(i.montantInitial)}</div></td>
+            <td>${date(i.ouvertLe)}${i.regleLe ? `<div class="faible">réglé le ${date(i.regleLe)}</div>` : ''}</td>
+            <td class="faible">${sources(i.sourcesEssayees)}</td>
+            <td>${pastille(i.statut)}${i.modeReglement ? `<div class="faible">${echapper(i.modeReglement)}</div>` : ''}</td>
+            <td class="actions"><button class="bouton fantome petit" data-action="client-detail" data-id="${i.clientId}">Dossier</button></td>
+        </tr>`);
+
+    const lignesRestrictions = (restr || []).map((x) => `
+        <tr>
+            <td><strong>${echapper(x.client?.nom || '—')}</strong><div class="faible">${echapper(x.client?.email || '')}</div></td>
+            <td>${echapper(x.libelle)}</td>
+            <td>${echapper(x.motif)}</td>
+            <td>${date(x.depuis)}</td>
+            <td>${x.jusqua ? date(x.jusqua) : '<span class="faible">levée explicite</span>'}</td>
+            <td class="actions">
+                <button class="bouton fantome petit" data-action="client-detail" data-id="${x.client?.id}">Dossier</button>
+                ${boutonGarde(`<button class="bouton secondaire petit" data-action="restriction-lever" data-id="${x.id}" data-nom="${echapper(x.client?.nom || '')}" %%ATTR%%>Lever</button>`, ['COMPLIANCE'])}
+            </td>
+        </tr>`);
+
+    return `
+        ${enTete('Défauts et restrictions',
+            "Ce que le recouvrement n'a pas couvert, et les opérations fermées à certains clients.")}
+
+        <div class="grille c4">
+            ${tuile('Incidents ouverts', nombre(r.ouverts), 'échéances non couvertes par les garanties', r.ouverts > 0 ? 'danger' : 'succes')}
+            ${tuile('Reste dû', fcfa(r.totalDu), 'aux groupes ou aux membres lésés', r.totalDu > 0 ? 'warning' : '')}
+            ${tuile('Plus ancien', r.plusAncien ? date(r.plusAncien) : '—', 'incident encore ouvert')}
+            ${tuile('Réglés sur 30 jours', nombre(r.regles30j), 'par le membre, un recouvrement ou une retenue', 'succes')}
+        </div>
+
+        <div class="carte">
+            <h3>Incidents de défaut</h3>
+            <div class="filtres">
+                <select class="champ" id="filtre-incidents">
+                    ${[['ouvert', 'Ouverts'], ['regle', 'Réglés'], ['', 'Tous']].map(([v, l]) =>
+                        `<option value="${v}" ${statut === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+                <button class="bouton petit" data-action="filtrer-incidents">Filtrer</button>
+            </div>
+            ${tableau(['Membre', 'Groupe', 'Reste dû', 'Ouvert le', 'Sources déjà sollicitées', 'Statut', ''], lignesIncidents)}
+            <p class="aide">Un incident se règle de lui-même : quand le membre régularise, quand une nouvelle garantie est mobilisée, ou par retenue sur son pot. Tant qu'il est ouvert, le membre ne peut ni recevoir de pot, ni enchérir, ni rejoindre une tontine.</p>
+        </div>
+
+        <div class="carte">
+            <h3>Restrictions en vigueur (${nombre((restr || []).length)})</h3>
+            ${tableau(['Client', 'Restriction', 'Motif', 'Depuis', "Jusqu'au", ''], lignesRestrictions)}
+            <p class="aide">Une restriction ferme une seule opération ; le reste du compte fonctionne. Pour en poser une, ouvrez le dossier du client.</p>
         </div>`;
 };
 
@@ -845,6 +920,48 @@ PAGES.admins = async () => {
  *  ACTIONS
  * ===================================================================== */
 
+/**
+ * Situation d'un client dans son dossier : restrictions, risque, decisions.
+ * Le risque est une mesure, pas une decision : il est montre avec ses
+ * facteurs, jamais comme un verdict.
+ */
+function situationClient(id, c, sit) {
+    const restrictions = sit.restrictions || [];
+    const risque = sit.risque;
+    const facteur = (f) => `<li class="${f.points > 0 ? 'plus' : f.points < 0 ? 'moins' : 'zero'}">
+        <span class="marque-f">${f.points > 0 ? '+' : ''}${f.points}</span><span>${echapper(f.libelle)}</span></li>`;
+    const decisions = (sit.decisions || []).slice(0, 8);
+
+    return `
+        <h4>Restrictions en vigueur</h4>
+        ${restrictions.length ? restrictions.map((r) => `
+            <div class="ligne-detail">
+                <span class="cle">${echapper(r.libelle)}<div class="faible">${echapper(r.motif)} — depuis le ${date(r.depuis)}${r.jusqua ? `, jusqu'au ${date(r.jusqua)}` : ''}</div></span>
+                <span class="val">${boutonGarde(`<button class="bouton secondaire petit" data-action="restriction-lever" data-id="${r.id}" data-nom="${echapper(c.nom)}" %%ATTR%%>Lever</button>`, ['COMPLIANCE'])}</span>
+            </div>`).join('') : '<p class="faible">Aucune : toutes les opérations sont ouvertes.</p>'}
+        <div style="margin-top:10px">
+            ${boutonGarde(`<button class="bouton danger petit" data-action="restriction-poser" data-client="${id}" data-nom="${echapper(c.nom)}" %%ATTR%%>Poser une restriction</button>`, ['COMPLIANCE'])}
+        </div>
+
+        ${risque ? `
+        <h4>Risque financier ${pastille(risque.niveau)} <span class="faible">score ${risque.score}/100 · ${echapper(risque.versionMoteur)}${risque.id ? ' · évaluation n°' + risque.id : ''}</span></h4>
+        ${risque.donneesSuffisantes ? '' : '<p class="faible">Historique insuffisant : la mesure est indicative.</p>'}
+        <ul class="facteurs">${(risque.facteurs || []).map(facteur).join('') || '<li class="zero"><span class="marque-f">0</span><span>Aucun facteur notable</span></li>'}</ul>
+        ${ligneDetail('Engagement mensuel', fcfa(risque.donnees?.engagementMensuel))}
+        ${ligneDetail('Reste à verser, toutes tontines', fcfa(risque.donnees?.expositionTotale))}
+        ${ligneDetail('Disponible / bloqué', `${fcfa(risque.donnees?.disponible)} / ${fcfa(risque.donnees?.bloque)}`)}
+        <p class="aide">Le risque ne décide rien : ce sont les contrôles d'éligibilité ci-dessous qui autorisent ou refusent. Cette consultation est conservée avec ses données.</p>` : ''}
+
+        <h4>Dernières décisions d'éligibilité</h4>
+        ${decisions.length ? tableau(['Date', 'Opération', 'Résultat', 'Motifs'], decisions.map((x) => `
+            <tr>
+                <td>${dateHeure(x.date)}</td>
+                <td>${echapper(x.operation)}</td>
+                <td>${pastille(x.resultat)}</td>
+                <td class="faible">${echapper((x.refus || []).join(' ; ') || '—')}</td>
+            </tr>`)) : '<p class="faible">Aucune décision enregistrée.</p>'}`;
+}
+
 const ACTIONS = {
     /* --- Tontine --- */
     'filtrer-tontine': () => {
@@ -900,30 +1017,92 @@ const ACTIONS = {
     'page-utilisateurs': (el) => afficherPage('utilisateurs', true, { page: Number(el.dataset.page) }),
 
     'client-detail': async (el) => {
-        const d = await api(`/utilisateur/${el.dataset.id}/detail`);
+        const id = el.dataset.id;
+        // La situation (KYC, restrictions, risque, decisions) ne doit pas
+        // empecher d'ouvrir le dossier si elle echoue.
+        const [d, sit] = await Promise.all([
+            api(`/utilisateur/${id}/detail`),
+            api(`/restriction/client/${id}`).catch((e) => ({ erreur: e.message })),
+        ]);
         const c = d.client || d;
         const pf = d.portefeuilles || d.wallets || [];
+        const verification = sit.kyc
+            ? echapper(sit.kyc.libelle) + (sit.kyc.expire ? ' <span class="pastille p-warning">expirée</span>' : '')
+            : (c.isVerified ? 'Email confirmé' : 'Non vérifié');
         ouvrirModale(`
             <h3>${echapper(c.nom || 'Client')}</h3>
             <p class="sous">${echapper(c.email || '')}</p>
             ${ligneDetail('Téléphone', echapper(c.telephone || '—'))}
-            ${ligneDetail('Vérifié', c.isVerified ? 'Oui' : 'Non')}
+            ${ligneDetail('Vérification', verification)}
             ${ligneDetail('Actif', c.isActive === false ? 'Non' : 'Oui')}
             ${ligneDetail('Inscrit le', date(c.createdAt))}
-            ${pf.length ? `<h3 style="margin-top:18px;font-size:14px">Portefeuilles</h3>
+            ${pf.length ? `<h4>Portefeuilles</h4>
                 ${pf.map((p) => ligneDetail(p.nom || p.typePortefeuille, fcfa(p.solde))).join('')}` : ''}
-            ${d.statistiques ? `<h3 style="margin-top:18px;font-size:14px">Activité</h3>
+            ${sit.erreur
+                ? `<div class="alerte" style="margin-top:16px"><div class="titre">Situation indisponible</div>${echapper(sit.erreur)}</div>`
+                : situationClient(id, c, sit)}
+            ${d.statistiques ? `<h4>Activité</h4>
                 ${Object.entries(d.statistiques).map(([k, v]) => ligneDetail(k, echapper(v))).join('')}` : ''}
-            <div class="modale-actions"><button class="bouton fantome" data-fermer>Fermer</button></div>`);
+            <div class="modale-actions"><button class="bouton fantome" data-fermer>Fermer</button></div>`, true);
         voile().querySelector('[data-fermer]').onclick = fermerModale;
+        // Les boutons de la modale vivent hors de #page : on les relie ici.
+        document.getElementById('modale').querySelectorAll('[data-action]').forEach((b) => {
+            b.onclick = (ev) => ACTIONS[b.dataset.action] && ACTIONS[b.dataset.action](b, ev);
+        });
     },
+
+    'restriction-poser': async (el) => {
+        const types = await api('/restriction/types');
+        ouvrirModale(`
+            <h3>Restreindre ${echapper(el.dataset.nom)}</h3>
+            <p class="sous">Une restriction ferme une seule opération. Le client continue de consulter, de payer ce qu'il doit et de contester. Il verra le motif, et la pose est inscrite au journal d'audit.</p>
+            <label class="label" for="r-type">Opération à fermer</label>
+            <select class="champ" id="r-type">
+                ${types.map((t) => `<option value="${echapper(t.type)}">Ne peut plus ${echapper(t.libelle)}</option>`).join('')}
+            </select>
+            <label class="label" for="r-motif">Motif</label>
+            <textarea class="champ" id="r-motif" placeholder="Ce que le client lira : pourquoi, et comment en sortir"></textarea>
+            <label class="label" for="r-fin">Jusqu'au (facultatif)</label>
+            <input class="champ" type="date" id="r-fin">
+            <div class="modale-actions">
+                <button class="bouton fantome" data-fermer>Annuler</button>
+                <button class="bouton danger" id="r-poser">Poser la restriction</button>
+            </div>`);
+        voile().querySelector('[data-fermer]').onclick = fermerModale;
+        document.getElementById('r-poser').onclick = async () => {
+            const motif = document.getElementById('r-motif').value.trim();
+            if (!motif) { toast('Le motif est obligatoire : le client doit savoir pourquoi.', 'erreur'); return; }
+            const type = document.getElementById('r-type').value;
+            const fin = document.getElementById('r-fin').value;
+            fermerModale();
+            await agir(() => api('/restriction', {
+                method: 'POST',
+                body: {
+                    clientId: Number(el.dataset.client), type, motif,
+                    actifJusqu: fin ? new Date(fin + 'T23:59:59').toISOString() : undefined,
+                },
+            }), 'Restriction posée');
+        };
+    },
+
+    'restriction-lever': async (el) => {
+        const r = await confirmer({
+            titre: 'Lever cette restriction ?',
+            texte: `${echapper(el.dataset.nom)} retrouvera l'opération fermée.`,
+            libelle: 'Lever la restriction', genre: 'succes',
+            champ: "Motif de la levée (journal d'audit)",
+        });
+        if (r.ok) agir(() => api(`/restriction/${el.dataset.id}/lever`, { method: 'POST', body: { motif: r.valeur } }), 'Restriction levée');
+    },
+
+    'filtrer-incidents': () => afficherPage('defauts', true, { statut: document.getElementById('filtre-incidents').value }),
 
     'basculer-client': async (el) => {
         const actif = el.dataset.actif === 'true';
         const r = await confirmer({
             titre: actif ? 'Désactiver ce compte ?' : 'Réactiver ce compte ?',
             texte: actif
-                ? "Le client ne pourra plus ni recharger ni retirer. Ses engagements de tontine, eux, continuent de courir."
+                ? "Le client ne pourra plus se connecter ni utiliser l'application. Ses engagements de tontine, eux, continuent de courir. Pour fermer une seule opération, posez plutôt une restriction depuis son dossier."
                 : 'Le client retrouvera l\'usage complet de son compte.',
             libelle: actif ? 'Désactiver' : 'Réactiver',
             genre: actif ? 'danger' : 'succes',

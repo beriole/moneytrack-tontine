@@ -53,6 +53,16 @@ class RestrictionService {
         });
     }
 
+    /** Toutes les restrictions en vigueur, pour l'administration. */
+    static async toutesEnVigueur(limite = 200) {
+        return Restriction.findAll({
+            where: enVigueur(),
+            include: [{ model: Client, as: 'client', attributes: ['id', 'nom', 'email'] }],
+            order: [['createdAt', 'DESC']],
+            limit: limite
+        });
+    }
+
     /** La restriction en vigueur d'un type donne, ou null. */
     static async active(clientId, type, t = null) {
         return Restriction.findOne({ where: { clientId, type, ...enVigueur() }, transaction: t });

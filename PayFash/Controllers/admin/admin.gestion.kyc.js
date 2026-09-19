@@ -11,14 +11,26 @@ const listeDemande = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const offset = (page - 1) * limit;
 
+        // La file est celle des IDENTITES a verifier : les comptes qui ont
+        // depose une piece et ne sont pas encore au niveau 2 (ou dont la
+        // verification a expire). Elle listait les comptes a l'email non
+        // confirme — une confirmation par code, que personne n'a a instruire.
         const { rows, count } = await Client.findAndCountAll({
-            where: { isVerified: false },
-            attributes: ['id', 'nom', 'email', 'telephone', 'isVerified', 'createdAt'],
+            where: {
+                [Op.or]: [
+                    { niveauKyc: { [Op.lt]: 2 } },
+                    { kycExpireLe: { [Op.lt]: new Date() } }
+                ]
+            },
+            include: [{ model: photo, required: true, attributes: ['id', 'createdAt'] }],
+            attributes: ['id', 'nom', 'email', 'telephone', 'isVerified', 'niveauKyc', 'kycExpireLe', 'createdAt'],
             order: [['createdAt', 'ASC']],
+            distinct: true,
             limit, offset
         });
         return res.json({
-            success: true, data: rows,
+            success: true,
+            data: rows.map(c => ({ ...c.toJSON(), kyc: KycService.etat(c) })),
             meta: { total: count, page, limit, totalPages: Math.ceil(count / limit) }
         });
     } catch (error) {

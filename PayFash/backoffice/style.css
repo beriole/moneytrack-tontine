@@ -366,6 +366,17 @@ td.actions .bouton { margin-left: 6px; }
     box-shadow: 0 26px 64px rgba(0, 0, 0, .55);
 }
 
+.modale.large { max-width: 780px; }
+.modale h4 { margin: 20px 0 8px; font-size: 14px; }
+
+/* Facteurs de risque : le sens se lit au signe autant qu'a la couleur */
+.facteurs { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.facteurs li { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--bordure); }
+.facteurs li:last-child { border-bottom: none; }
+.facteurs .marque-f { font-weight: 700; width: 34px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.facteurs .plus .marque-f { color: var(--danger); }
+.facteurs .moins .marque-f { color: var(--success); }
+.facteurs .zero .marque-f { color: var(--muted); }
 .modale h3 { margin: 0 0 6px; font-size: 18px; }
 .modale .sous { color: var(--muted); font-size: 13px; margin: 0 0 16px; line-height: 19px; }
 .modale-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }

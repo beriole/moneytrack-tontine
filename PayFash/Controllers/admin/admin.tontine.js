@@ -421,4 +421,47 @@ const exporter = async (req, res) => {
     }
 };
 
-module.exports = { stats, listeGroupes, detailGroupe, anomalies, geler, degeler, ficheClient, exporter };
+// GET /api/admin/tontine/incidents?statut=ouvert|regle
+//
+// Ce que le recouvrement n'a pas couvert, toutes tontines confondues : qui
+// doit quoi, a quel groupe, depuis quand, et ce que chaque source a donne.
+const incidents = async (req, res) => {
+    try {
+        const { TontineIncidentDefaut } = require('../../models/index');
+        const DefautService = require('../../services/tontine/defaut.service');
+        const statut = ['ouvert', 'regle'].includes(req.query.statut) ? req.query.statut : null;
+        const liste = await TontineIncidentDefaut.findAll({
+            where: statut ? { statut } : {},
+            order: [['statut', 'ASC'], ['ouvertLe', 'DESC']],
+            limit: 200
+        });
+        const [groupes, clients] = await Promise.all([
+            TontineGroupe.findAll({ where: { id: [...new Set(liste.map(i => i.groupeId))] }, attributes: ['id', 'nom'] }),
+            Client.findAll({ where: { id: [...new Set(liste.map(i => i.clientId))] }, attributes: ['id', 'nom', 'email'] })
+        ]);
+        const nomGroupe = new Map(groupes.map(g => [g.id, g.nom]));
+        const client = new Map(clients.map(c => [c.id, c]));
+
+        const ouverts = await TontineIncidentDefaut.findAll({ where: { statut: 'ouvert' }, attributes: ['resteDu', 'ouvertLe'] });
+        const regles30j = await TontineIncidentDefaut.count({ where: { statut: 'regle', regleLe: { [Op.gte]: jours(30) } } });
+        return res.json({
+            resume: {
+                ouverts: ouverts.length,
+                totalDu: arrondir(ouverts.reduce((s, i) => s + nombre(i.resteDu), 0)),
+                plusAncien: ouverts.length ? ouverts.reduce((m, i) => (i.ouvertLe < m ? i.ouvertLe : m), ouverts[0].ouvertLe) : null,
+                regles30j
+            },
+            incidents: liste.map(i => ({
+                ...DefautService.vue(i, nomGroupe.get(i.groupeId)),
+                client: client.has(i.clientId)
+                    ? { id: i.clientId, nom: client.get(i.clientId).nom, email: client.get(i.clientId).email }
+                    : null
+            }))
+        });
+    } catch (e) {
+        console.error('[admin tontine] incidents', e);
+        return res.status(500).json({ error: e.message });
+    }
+};
+
+module.exports = { stats, listeGroupes, detailGroupe, anomalies, geler, degeler, ficheClient, exporter, incidents };
