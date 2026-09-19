@@ -1,6 +1,7 @@
 const { RestrictionService } = require('../../services/restriction.service');
 const EligibiliteService = require('../../services/tontine/eligibilite.service');
 const KycService = require('../../services/kyc.service');
+const RisqueService = require('../../services/risque.service');
 const { Client } = require('../../models/index');
 
 // =====================================================================
@@ -33,12 +34,21 @@ const situationClient = async (req, res) => {
         if (!client) return res.status(404).json({ success: false, error: 'Client introuvable' });
         const restrictions = await RestrictionService.actives(client.id);
         const decisions = await EligibiliteService.historique(client.id);
+        // Evaluee a la demande et conservee : un examen administratif est
+        // une decision a tracer comme les autres.
+        const risque = await RisqueService.evaluer(client.id, { contexte: 'admin' });
+        const evaluations = await RisqueService.historique(client.id);
         return res.json({
             success: true,
             data: {
                 client: { id: client.id, nom: client.nom, email: client.email, isActive: client.isActive },
                 kyc: KycService.etat(client),
                 restrictions: restrictions.map(r => RestrictionService.vue(r)),
+                risque,
+                evaluationsRisque: evaluations.map(e => ({
+                    id: e.id, date: e.createdAt, contexte: e.contexte, groupeId: e.groupeId,
+                    niveau: e.niveau, score: e.score, versionMoteur: e.versionMoteur
+                })),
                 decisions: decisions.map(d => ({
                     id: d.id, operation: d.operation, resultat: d.resultat, groupeId: d.groupeId,
                     cycleId: d.cycleId, date: d.createdAt, versionMoteur: d.versionMoteur,

@@ -113,6 +113,7 @@ route.get("/groupes/:groupeId/reglement", verifyToken, GOUV.reglementCourant);
 route.get("/moi/exposition", verifyToken, GAR.monExposition);
 route.get("/regles-couverture", verifyToken, GAR.modelesCouverture);
 route.get("/moi/situation", verifyToken, GAR.maSituation);
+route.get("/moi/risque", verifyToken, GAR.monRisque);
 route.get("/garanties", verifyToken, GAR.mesGaranties);
 route.get("/garanties/:garantieId", verifyToken, GAR.detail);
 route.post("/garanties/:garantieId/liberer", verifyToken, GAR.liberer);

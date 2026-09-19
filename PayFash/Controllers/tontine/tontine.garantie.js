@@ -166,7 +166,19 @@ const reprendreExcedent = async (req, res) => {
     } catch (e) { return repondreErreur(res, e); }
 };
 
+// GET /tontine/moi/risque
+// Ma situation financiere telle que MoneyTrack la mesure : atouts et
+// points d'attention. Calculee a la demande, non conservee.
+const monRisque = async (req, res) => {
+    try {
+        const RisqueService = require('../../services/risque.service');
+        const r = await RisqueService.evaluer(req.user.id);
+        return res.status(200).json(RisqueService.vueMembre(r));
+    } catch (e) { return repondreErreur(res, e); }
+};
+
 module.exports = {
+    monRisque,
     excedent, reprendreExcedent,
     monExposition, expositionGroupe, couvertureGroupe, modelesCouverture, eligibilite, maSituation,
     sources, simulation, affecter,

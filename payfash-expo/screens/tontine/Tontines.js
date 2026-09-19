@@ -120,6 +120,12 @@ export default function Tontines() {
           variante="secondaire"
           onPress={() => navigation.navigate('RejoindreTontine')}
         />
+        <Bouton
+          titre="Ma situation"
+          icone="pie-chart"
+          variante="secondaire"
+          onPress={() => navigation.navigate('MaSituation')}
+        />
       </ScrollView>
     </SafeAreaView>
   );

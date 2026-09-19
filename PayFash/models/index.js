@@ -55,6 +55,7 @@ const {
     TontineIncidentDefaut
 } = tontine;
 const Restriction = require('./model.restriction');
+const EvaluationRisque = require('./model.evaluationRisque');
 
 // Alias pour les relations
 const Projet = projet;
@@ -204,6 +205,7 @@ TontineConsentementGarantie.belongsTo(Client, { foreignKey: 'clientId', as: 'cli
 // Restrictions : des portes fermees sur un compte, pas le compte entier
 Client.hasMany(Restriction, { foreignKey: 'clientId', as: 'restrictions' });
 Restriction.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+Client.hasMany(EvaluationRisque, { foreignKey: 'clientId', as: 'evaluationsRisque' });
 
 module.exports = {
     Epargne,
@@ -254,5 +256,6 @@ module.exports = {
     TontineConsentementGarantie,
     TontineEvaluationEligibilite,
     TontineIncidentDefaut,
-    Restriction
+    Restriction,
+    EvaluationRisque
 };

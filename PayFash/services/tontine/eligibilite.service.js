@@ -215,6 +215,13 @@ class EligibiliteService {
             console.log("[eligibilite] trace de decision non enregistree :", e.message);
         }
 
+        // Le risque accompagne la decision sans la conditionner (sections 13
+        // et 14) : il est evalue et conserve a cote d'elle, pour qu'un
+        // examen ulterieur sache dans quelle situation elle a ete prise.
+        if (['versement', 'adhesion', 'enchere'].includes(operation)) {
+            await require('../risque.service').accompagner(clientId, operation, ctx.groupe ? ctx.groupe.id : null);
+        }
+
         if (!refus.length) return { resultat, controles };
 
         const premier = refus[0];

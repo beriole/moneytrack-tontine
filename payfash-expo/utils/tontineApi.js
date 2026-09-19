@@ -113,6 +113,9 @@ export const eligibiliteGroupe = (groupeId, operation = 'versement') =>
   api.get(`/tontine/groupes/${groupeId}/eligibilite`, { params: { operation } });
 // Niveau de verification et restrictions du compte.
 export const maSituation = () => api.get('/tontine/moi/situation');
+// Atouts et points d'attention mesures par le moteur de risque. Informatif :
+// il ne decide pas de l'eligibilite.
+export const monRisque = () => api.get('/tontine/moi/risque');
 export const transmettrePresidence = (groupeId, clientId, motif) =>
   api.post(`/tontine/groupes/${groupeId}/presidence`, { clientId, motif });
 
