@@ -42,13 +42,21 @@ async function trouverTable(qi) {
             if (description) return { nom, description };
         } catch (e) { /* table absente sous cette graphie */ }
     }
-    return null;
+    // Rendre la main en silence enregistrait la migration comme appliquee
+    // alors qu'elle n'avait rien fait. C'est exactement ce qui s'est produit :
+    // jouee avant que db.sync() ne cree la table, elle a ete inscrite dans
+    // SequelizeMeta sans ajouter addresse — et /auth/login a repondu 500
+    // pour tous les comptes, sans qu'aucune migration ne reste a jouer.
+    // Une migration qui ne trouve pas sa table doit echouer bruyamment.
+    throw new Error(
+        `Table introuvable sous les graphies ${CANDIDATES.join(' / ')} : ` +
+        'creez le schema (db.sync) avant de jouer les migrations.'
+    );
 }
 
 module.exports = {
     async up(qi, Sequelize) {
         const table = await trouverTable(qi);
-        if (!table) return;
 
         const colonne = table.description.telephone;
         // On ne convertit que si la colonne est encore numerique.
@@ -69,7 +77,6 @@ module.exports = {
 
     async down(qi, Sequelize) {
         const table = await trouverTable(qi);
-        if (!table) return;
 
         if (Object.prototype.hasOwnProperty.call(table.description, 'addresse')) {
             await qi.removeColumn(table.nom, 'addresse');
