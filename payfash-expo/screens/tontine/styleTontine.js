@@ -52,6 +52,11 @@ export const statutCouleur = {
   // Incidents de defaut
   ouvert: colors.danger,
   regle: colors.success,
+  // Cautions
+  bloquee: colors.accent,
+  partiellement_utilisee: colors.warning,
+  totalement_utilisee: colors.danger,
+  liberee: colors.textMuted,
 };
 
 export const libelleStatut = {
@@ -83,6 +88,10 @@ export const libelleStatut = {
   retiree: 'Retiree',
   ouvert: 'A regler',
   regle: 'Regle',
+  bloquee: 'Bloquee',
+  partiellement_utilisee: 'Entamee',
+  totalement_utilisee: 'Consommee',
+  liberee: 'Liberee',
 };
 
 export default StyleSheet.create({

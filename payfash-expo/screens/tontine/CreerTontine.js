@@ -36,6 +36,17 @@ const EXPLICATION_COUVERTURE = {
   totale: "Chacun doit avoir garanti tout ce qui lui restera a payer avant de recevoir le pot. Le plus sur, le plus exigeant.",
 };
 
+// Politique de recouvrement (politiqueRecouvrement.js cote serveur).
+const GRACES = [
+  { valeur: 0, libelle: 'Aucun' },
+  { valeur: 3, libelle: '3 jours' },
+  { valeur: 7, libelle: '7 jours' },
+];
+const RETENUES = [
+  { valeur: true, libelle: 'Oui' },
+  { valeur: false, libelle: 'Non' },
+];
+
 const EXPLICATION_ORDRE = {
   tirage: "L'ordre de passage est tire au sort de facon verifiable au demarrage.",
   anciennete: "L'ordre suit la date d'adhesion : le premier arrive passe le premier.",
@@ -55,6 +66,8 @@ export default function CreerTontine() {
   const [couverture, setCouverture] = useState('aucune');
   const [frequence, setFrequence] = useState('mensuelle');
   const [modeOrdre, setModeOrdre] = useState('tirage');
+  const [grace, setGrace] = useState(0);
+  const [retenue, setRetenue] = useState(true);
   const [envoi, setEnvoi] = useState(false);
 
   const nb = parseInt(membresMax, 10) || 0;
@@ -79,6 +92,10 @@ export default function CreerTontine() {
         pourcentageCaution: parseFloat(caution) || 0,
         cautionObligatoire,
         reglesCouverture: couverture,
+        politiqueRecouvrement: {
+          ordre: ['caution', 'garanties', ...(retenue ? ['retenue_pot'] : [])],
+          delaiGraceJours: grace,
+        },
       });
       await rafraichir();
       navigation.replace('SuccesTontine', {
@@ -191,6 +208,22 @@ export default function CreerTontine() {
         <Text style={s.label}>Garantie exigee avant de recevoir le pot</Text>
         <Segments options={COUVERTURES} valeur={couverture} onChange={setCouverture} />
         <Text style={s.aide}>{EXPLICATION_COUVERTURE[couverture]}</Text>
+
+        <Text style={s.label}>En cas de retard : delai avant de puiser dans les garanties</Text>
+        <Segments options={GRACES} valeur={grace} onChange={setGrace} />
+        <Text style={s.aide}>
+          {grace > 0
+            ? `Passe l'echeance, le membre a ${grace} jours pour payer lui-meme ; ensuite, sa caution puis ses garanties completent ce qui manque, et rien de plus.`
+            : "A l'echeance, la caution puis les garanties du membre completent ce qui manque, et rien de plus."}
+        </Text>
+
+        <Text style={s.label}>Retenir ses dettes sur le pot du membre en retard</Text>
+        <Segments options={RETENUES} valeur={retenue} onChange={setRetenue} />
+        <Text style={s.aide}>
+          {retenue
+            ? "Si un membre doit encore quelque chose quand vient son tour, c'est preleve sur son pot et reverse a ceux qu'il a leses."
+            : "Son pot lui est verse sans retenue ; tant qu'il doit quelque chose, il ne peut pas le recevoir."}
+        </Text>
 
         {potEstime > 0 && (
           <View style={{ marginTop: 18 }}>

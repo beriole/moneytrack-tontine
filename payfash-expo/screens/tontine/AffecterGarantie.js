@@ -157,7 +157,7 @@ export default function AffecterGarantie() {
 
             <Bouton
               titre={`J'accepte et je bloque ${fcfa(apercu.montant)}`}
-              icone="shield-check"
+              icone="safety"
               variante="success"
               inactif={!apercu.possible}
               charge={envoi}

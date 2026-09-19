@@ -152,7 +152,7 @@ export default function EncheresTontine() {
           <View style={{ marginTop: 16 }}>
             <Bouton
               titre="Ouvrir une enchère (24 h)"
-              icone="clockcircleo"
+              icone="clock-circle"
               variante="secondaire"
               charge={action === 'ouvrir'}
               onPress={() => agir('ouvrir', () => ouvrirEnchere(cycleId),
@@ -164,7 +164,7 @@ export default function EncheresTontine() {
           <View style={{ marginTop: 12 }}>
             <Bouton
               titre="Adjuger maintenant"
-              icone="checkcircleo"
+              icone="check-circle"
               variante="success"
               charge={action === 'adjuger'}
               onPress={() => Alert.alert(

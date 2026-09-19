@@ -130,6 +130,9 @@ export const mesAmendes = (groupeId) => api.get('/tontine/amendes/mes-amendes', 
 export const amendesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/amendes`);
 export const payerAmende = (amendeId) => api.post(`/tontine/amendes/${amendeId}/payer`);
 export const infligerAmende = (groupeId, corps) => api.post(`/tontine/groupes/${groupeId}/amendes`, corps);
+export const annulerAmende = (amendeId, commentaire) => api.post(`/tontine/amendes/${amendeId}/annuler`, { commentaire });
+export const libererCaution = (cautionId) => api.post(`/tontine/cautions/${cautionId}/liberer`);
+export const exclureMembre = (groupeId, clientId, motif) => api.post(`/tontine/groupes/${groupeId}/exclure`, { clientId, motif });
 
 // Defauts : ce que le recouvrement n'a pas couvert, et comment le regler.
 export const mesIncidents = () => api.get('/tontine/incidents/mes-incidents');
@@ -179,6 +182,9 @@ export const adjugerEnchere = (cycleId) => api.post(`/tontine/cycles/${cycleId}/
 export const retirerEnchere = (enchereId) => api.post(`/tontine/encheres/${enchereId}/retirer`);
 
 export const reglementCourant = (groupeId) => api.get(`/tontine/groupes/${groupeId}/reglement`);
+// Toutes les versions, la plus recente d'abord : on ne change pas les regles
+// sous des signatures, on en ouvre une nouvelle.
+export const versionsReglement = (groupeId) => api.get(`/tontine/groupes/${groupeId}/reglement/versions`);
 export const genererReglement = (groupeId, contenu) => api.post(`/tontine/groupes/${groupeId}/reglement`, { contenu });
 export const signerReglement = (contratId) => api.post(`/tontine/reglements/${contratId}/signer`);
 

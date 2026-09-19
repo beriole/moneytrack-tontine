@@ -83,7 +83,9 @@ const payerAmende = async (req, res) => {
     try {
         const r = await AmendeService.payer(req.user.id, req.params.amendeId);
         return res.status(200).json({
-            message: `Amende reglee. Elle a alimente ${r.amende.destination === 'epargne' ? "la caisse d'epargne" : 'le pot du cycle'}.`,
+            // La caisse d'epargne n'existe plus : une amende indemnise le
+            // membre lese (pot du cycle, beneficiaire, ou les autres membres).
+            message: 'Amende reglee : elle indemnise le membre que le retard a lese.',
             ...r
         });
     } catch (e) { return repondreErreur(res, e); }

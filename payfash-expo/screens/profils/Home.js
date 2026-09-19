@@ -11,6 +11,7 @@ import api from '../../utils/axiosApi';
 import TransactionCard from '../../utils/transactionCard';
 import CourbeTresorerie from '../../components/Tresorerie';
 import { synthese, tresorerie as apiTresorerie, fcfa, dateCourte } from '../../utils/tontineApi';
+import { nonLues } from '../../utils/notificationsApi';
 import { colors, gradients } from '../../theme';
 
 // =====================================================================
@@ -51,6 +52,7 @@ export default function Home() {
   const [totalSolde, setTotalSolde] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [vue, setVue] = useState(null);       // synthese tontine
+  const [aLire, setALire] = useState(0);      // notifications non lues
   const [courbe, setCourbe] = useState(null); // projection de tresorerie
 
   useEffect(() => {
@@ -79,10 +81,12 @@ export default function Home() {
 
       // La synthese peut manquer (aucune tontine) : l'accueil doit rester
       // parfaitement utilisable sans elle.
-      const [s, t] = await Promise.all([
+      const [s, t, n] = await Promise.all([
         synthese().catch(() => null),
         apiTresorerie(120).catch(() => null),
+        nonLues().catch(() => null),
       ]);
+      setALire(Number(n?.data?.total) || 0);
       setVue(s?.data || null);
       setCourbe(t?.data || null);
     } catch (e) {
@@ -136,7 +140,7 @@ export default function Home() {
 
           <TouchableOpacity onPress={() => navigation.navigate('Notification')} style={st.cloche}>
             <Icon name="bell" size={19} color={colors.white} />
-            {vue?.solde?.exigible > 0 && <View style={st.pastilleAlerte} />}
+            {(vue?.solde?.exigible > 0 || aLire > 0) && <View style={st.pastilleAlerte} />}
           </TouchableOpacity>
         </View>
 

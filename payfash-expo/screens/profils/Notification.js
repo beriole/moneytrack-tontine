@@ -1,127 +1,119 @@
-import { View, Text, SafeAreaView, ScrollView, StyleSheet, Image, TouchableOpacity } from 'react-native'
-import React from 'react'
-import { AntDesign } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors } from '../../theme';
+import s from '../tontine/styleTontine';
+import { Chargement, Vide } from '../tontine/composants';
+import { mesNotifications, marquerLue } from '../../utils/notificationsApi';
+import { messageErreur } from '../../utils/tontineApi';
 
-export default function Notification() {
-  const Navigation = useNavigation();
-  const data = [
-    { id:1, titre:"Votre budget Alimentaire a dépassé 80%", times:2, type:'Budget', lu:0 },
-    { id:2, titre:"Un virement de 50 000 XAF a été reçu", times:10, type:'Transaction', lu:1 },
-    { id:3, titre:"Votre portefeuille Épargne a atteint 200 000 XAF", times:30, type:'Épargne', lu:0 },
-    { id:4, titre:"Paiement de 15 000 XAF effectué avec succès", times:50, type:'Transaction', lu:1 },
-    { id:5, titre:"Rappel : échéance de crédit dans 3 jours", times:120, type:'Crédit', lu:0 },
-    { id:6, titre:"Nouvelle recommandation de gestion disponible", times:300, type:'Conseil IA', lu:1 },
-    { id:7, titre:"Votre solde du portefeuille Courant est inférieur à 5 000 XAF", times:400, type:'Alerte Solde', lu:0 },
-  ];
+// Les notifications que le serveur envoie vraiment : rappels, retards, pot
+// verse, garantie mobilisee, vote ouvert... L'ecran affichait jusqu'ici une
+// liste figee, ecrite en dur, sans rapport avec le compte.
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <TouchableOpacity style={styles.header}>
-        <AntDesign onPress={() => Navigation.goBack()} name='arrow-left' size={26} color={'white'} />
-        <Text style={styles.headerText}>Notifications</Text>
-      </TouchableOpacity>
+const TYPE = {
+  alerte: { icone: 'alert-circle-outline', couleur: colors.warning },
+  promo: { icone: 'tag-outline', couleur: colors.violetLight },
+  system: { icone: 'bell-outline', couleur: colors.accentLight },
+};
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
-        {data.map((item) => (
-          <View 
-            key={item.id} 
-            style={[
-              styles.notificationCard, 
-              item.lu === 1 ? styles.read : styles.unread
-            ]}
-          >
-            <View style={styles.left}>
-              <Image source={require('../../assets/logo/icon-512.png')} style={styles.avatar} />
-              <View style={{marginLeft:12, flex:1}}>
-                <Text style={styles.title}>{item.titre}</Text>
-                <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:6}}>
-                  <Text style={styles.type}>{item.type}</Text>
-                  <Text style={styles.time}>{item.times} min ago</Text>
-                </View>
-              </View>
-            </View>
-            {!item.lu && <View style={styles.unreadDot}/>}
-          </View>
-        ))}
-      </ScrollView>
-    </SafeAreaView>
-  )
+// Ecrans vers lesquels un lien peut mener. « Communaute » est un onglet :
+// on y passe par le navigateur a onglets.
+const DESTINATIONS = {
+  Communaute: (nav) => nav.navigate('Menu', { screen: 'Communaute' }),
+};
+
+function ilYa(date) {
+  const min = Math.max(0, Math.round((Date.now() - new Date(date).getTime()) / 60000));
+  if (min < 1) return "a l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `il y a ${h} h`;
+  const j = Math.round(h / 24);
+  if (j < 30) return `il y a ${j} j`;
+  return new Date(date).toLocaleDateString('fr-FR');
 }
 
-const styles = StyleSheet.create({
-  container:{
-    flex:1,
-    backgroundColor:'#161427',
-  },
-  header:{
-    paddingVertical:16,
-    backgroundColor:'#211C3A',
-    alignItems:'center',
-    justifyContent:'flex-start',
-    paddingHorizontal:12,
-    gap:12,
-    flexDirection:'row',
-    marginBottom:8
-  },
-  headerText:{
-    color:'#fff',
-    fontSize:22,
-    fontWeight:'bold'
-  },
-  notificationCard:{
-    flexDirection:'row',
-    alignItems:'center',
-    padding:16,
-    marginHorizontal:16,
-    marginVertical:8,
-    borderRadius:16,
-    shadowColor:'#000',
-    shadowOpacity:0.15,
-    shadowRadius:8,
-    elevation:4,
-    backgroundColor:'#211C3A'
-  },
-  unread:{
-    borderLeftWidth:5,
-    borderLeftColor:'#6366F1'
-  },
-  read:{
-    borderLeftWidth:5,
-    borderLeftColor:'transparent'
-  },
-  left:{
-    flexDirection:'row',
-    alignItems:'flex-start',
-    flex:1
-  },
-  avatar:{
-    width:40,
-    height:40,
-    borderRadius:20,
-    marginTop:2
-  },
-  title:{
-    color:'#fff',
-    fontWeight:'600',
-    fontSize:15,
-    flexWrap:'wrap',   // 👉 permet d’aller à la ligne
-    flexShrink:1
-  },
-  time:{
-    color:'#94A3B8',
-    fontSize:12
-  },
-  type:{
-    color:'#FBBF24',
-    fontWeight:'bold',
-    fontSize:12
-  },
-  unreadDot:{
-    width:10,
-    height:10,
-    borderRadius:5,
-    backgroundColor:'#F43F5E',
-    marginLeft:8
-  }
-})
+export default function Notification() {
+  const navigation = useNavigation();
+  const [liste, setListe] = useState(null);
+  const [rafraichissement, setRafraichissement] = useState(false);
+
+  const charger = useCallback(async () => {
+    try {
+      const { data } = await mesNotifications();
+      setListe(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setListe([]);
+      Alert.alert('Chargement impossible', messageErreur(e));
+    } finally {
+      setRafraichissement(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { charger(); }, [charger]));
+
+  const ouvrir = async (n) => {
+    const lue = n.NotificationEnvoyer?.lu;
+    if (!lue) {
+      // Marquee lue tout de suite a l'ecran ; le serveur suit.
+      setListe((l) => l.map((x) => (x.id === n.id ? { ...x, NotificationEnvoyer: { ...x.NotificationEnvoyer, lu: true } } : x)));
+      marquerLue(n.id).catch(() => {});
+    }
+    const lien = n.lien;
+    if (!lien || !lien.ecran) return;
+    try {
+      if (DESTINATIONS[lien.ecran]) DESTINATIONS[lien.ecran](navigation);
+      else navigation.navigate(lien.ecran, lien.params || {});
+    } catch (e) {
+      Alert.alert('Destination indisponible', "L'ecran lie a cette notification n'existe plus.");
+    }
+  };
+
+  if (!liste) return <Chargement />;
+  const nonLues = liste.filter((n) => !n.NotificationEnvoyer?.lu).length;
+
+  return (
+    <SafeAreaView style={s.page}>
+      <ScrollView
+        contentContainerStyle={s.contenu}
+        refreshControl={<RefreshControl refreshing={rafraichissement} onRefresh={() => { setRafraichissement(true); charger(); }} tintColor={colors.white} />}
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 14 }}>
+          <AntDesign name="arrow-left" size={22} color={colors.white} />
+        </TouchableOpacity>
+
+        <Text style={s.titre}>Notifications</Text>
+        <Text style={s.sousTitre}>
+          {nonLues > 0 ? `${nonLues} non lue${nonLues > 1 ? 's' : ''} · touchez pour ouvrir` : 'Tout est lu'}
+        </Text>
+
+        {liste.length === 0 ? (
+          <Vide icone="bell-off-outline" texte={"Aucune notification pour l'instant.\nRappels, retards et versements s'afficheront ici."} />
+        ) : liste.map((n) => {
+          const t = TYPE[n.Type] || TYPE.system;
+          const lue = n.NotificationEnvoyer?.lu;
+          return (
+            <TouchableOpacity
+              key={n.id}
+              activeOpacity={0.85}
+              onPress={() => ouvrir(n)}
+              style={[s.carte, { flexDirection: 'row', alignItems: 'flex-start' }, !lue && { borderLeftWidth: 4, borderLeftColor: colors.accent }]}
+            >
+              <MaterialCommunityIcons name={t.icone} size={22} color={t.couleur} style={{ marginRight: 12, marginTop: 1 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.white, fontSize: 14, lineHeight: 20, fontWeight: lue ? '400' : '600' }}>{n.message}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                  <Text style={s.carteInfo}>{n.categorie || (n.Type === 'alerte' ? 'Alerte' : 'Information')}</Text>
+                  <Text style={s.carteInfo}>{ilYa(n.dateEnvoie || n.createdAt)}</Text>
+                </View>
+              </View>
+              {n.lien?.ecran ? <AntDesign name="right" size={14} color={colors.textMuted} style={{ marginLeft: 8, marginTop: 4 }} /> : null}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

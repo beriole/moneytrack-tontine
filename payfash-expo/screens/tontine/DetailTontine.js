@@ -324,7 +324,7 @@ export default function DetailTontine() {
                 />
               )}
               <Lien
-                icone="target-arrow"
+                icone="target"
                 titre="Destination de mon tour"
                 etat={liens.destinationTour.definie
                   ? `${liens.destinationTour.nom || liens.destinationTour.type}`
@@ -373,6 +373,11 @@ export default function DetailTontine() {
         <Menu
           items={[
             { icone: 'account-group', label: 'Membres et tours', ecran: 'MembresTontine' },
+            // Les outils du president : visibles des qu'un de ses actes lui est ouvert.
+            ...(['consulterIncidents', 'consulterGaranties', 'consulterCautions', 'infligerAmende', 'exclureMembre']
+              .some((a) => actes[a])
+              ? [{ icone: 'account-tie', label: 'Espace du president', ecran: 'BureauTontine' }]
+              : []),
             ...(cycleEnCours ? [{ icone: 'cash-multiple', label: 'Cotisations du cycle', ecran: 'CotisationsCycle', params: { cycleId: cycleEnCours.id } }] : []),
             // Le mode « enchere » etait proposé à la création sans qu'aucun
             // écran ne permette d'enchérir.

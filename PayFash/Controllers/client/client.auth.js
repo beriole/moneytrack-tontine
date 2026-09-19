@@ -405,18 +405,19 @@ const clientNotif= async (req, res) => {
     const clientId = req.params.clientId;
     if (!memeClient(req, res, clientId)) return;
 
-    const client = await Client.findByPk(clientId, {
-      include: {
-        model: Notification,
-        through: { attributes: ["lu"] }
-      }
-    });
-
+    const client = await Client.findByPk(clientId, { attributes: ['id'] });
     if (!client) {
       return res.status(404).json({ error: "Client non trouvé" });
     }
 
-    res.json(client.Notifications);
+    // Les plus recentes d'abord, et pas tout l'historique d'un coup : la
+    // liste etait renvoyee dans l'ordre d'insertion, sans limite.
+    const notifications = await client.getNotifications({
+      joinTableAttributes: ['lu'],
+      order: [['dateEnvoie', 'DESC'], ['id', 'DESC']],
+      limit: 100
+    });
+    res.json(notifications);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Erreur lors de la récupération des notifications" });
@@ -453,6 +454,13 @@ const notifNonLu= async (req, res) => {
   try {
     const { clientId } = req.params;
     if (!memeClient(req, res, clientId)) return;
+
+    // ?compte=1 : le nombre seul, pour une pastille — pas des centaines
+    // d'objets telecharges pour etre comptes.
+    if (req.query.compte) {
+      const total = await NotificationEnvoyer.count({ where: { ClientId: clientId, lu: false } });
+      return res.json({ total });
+    }
 
     const notifs = await Notification.findAll({
       include: [

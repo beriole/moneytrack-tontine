@@ -6,7 +6,7 @@ import { colors } from '../../theme';
 import s, { carteHaute } from './styleTontine';
 import { Pastille, Bouton, Chargement, Info, Vide } from './composants';
 import {
-  reglementCourant, genererReglement, signerReglement, detailGroupe,
+  reglementCourant, genererReglement, signerReglement, detailGroupe, versionsReglement,
   messageErreur, dateCourte,
 } from '../../utils/tontineApi';
 
@@ -19,12 +19,14 @@ export default function ReglementTontine() {
   const [data, setData] = useState(null);
   const [absent, setAbsent] = useState(false);
   const [actes, setActes] = useState({});
+  const [versions, setVersions] = useState([]);
   const [action, setAction] = useState(false);
 
   const charger = useCallback(async () => {
     try {
       const { data: g } = await detailGroupe(groupeId);
       setActes(g.permissions?.actes || {});
+      try { setVersions((await versionsReglement(groupeId)).data.versions || []); } catch (e) { setVersions([]); }
       const { data: d } = await reglementCourant(groupeId);
       setData(d);
       setAbsent(false);
@@ -71,7 +73,7 @@ export default function ReglementTontine() {
             {peutRediger && (
               <Bouton
                 titre="Generer le reglement"
-                icone="filetext1"
+                icone="file-text"
                 charge={action}
                 onPress={() => executer(() => genererReglement(groupeId), 'Reglement genere')}
               />
@@ -143,6 +145,27 @@ export default function ReglementTontine() {
                 ])
               }
             />
+            {versions.length > 1 && (
+              <>
+                <Text style={s.section}>Historique des versions</Text>
+                <View style={s.carte}>
+                  {versions.map((v, i) => (
+                    <View key={v.id} style={[s.ligne, i < versions.length - 1 && s.ligneSeparee]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.white, fontSize: 14 }}>
+                          Version {v.version}{v.id === data.contrat.id ? '  (en vigueur)' : ''}
+                        </Text>
+                        <Text style={s.carteInfo}>
+                          {`Generee le ${dateCourte(v.dateGeneration)}${v.dateSignatureComplete ? ` · signee le ${dateCourte(v.dateSignatureComplete)}` : ''} · ${String(v.hashContenu).slice(0, 12)}…`}
+                        </Text>
+                      </View>
+                      <Pastille statut={v.statut === 'signe' ? 'payee' : v.statut === 'en_attente_signatures' ? 'attendue' : 'termine'} />
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+
             {peutRediger && (
               <Bouton
                 titre="Regenerer depuis les regles du groupe"

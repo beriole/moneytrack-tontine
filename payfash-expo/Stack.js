@@ -48,6 +48,7 @@ import MesAmendes from './screens/tontine/MesAmendes';
 import MesGaranties from './screens/tontine/MesGaranties';
 import MesIncidents from './screens/tontine/MesIncidents';
 import MaSituation from './screens/tontine/MaSituation';
+import BureauTontine from './screens/tontine/BureauTontine';
 import AffecterGarantie from './screens/tontine/AffecterGarantie';
 import VotesTontine from './screens/tontine/VotesTontine';
 import EchangeTour from './screens/tontine/EchangeTour';
@@ -114,6 +115,7 @@ export default function Stack(){
                 <stack.Screen name='MesGaranties' component={MesGaranties} />
                 <stack.Screen name='MesIncidents' component={MesIncidents} />
                 <stack.Screen name='MaSituation' component={MaSituation} />
+                <stack.Screen name='BureauTontine' component={BureauTontine} />
                 <stack.Screen name='AffecterGarantie' component={AffecterGarantie} />
                 <stack.Screen name='VotesTontine' component={VotesTontine} />
                 <stack.Screen name='EchangeTour' component={EchangeTour} />
