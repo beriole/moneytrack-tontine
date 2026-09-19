@@ -22,9 +22,6 @@ route.post('/chatbot', verifyToken, CONTROLLER.chatbot);
 // Analyse financière complète
 route.get('/analyse-financiere', verifyToken, CONTROLLER.analyserSituationFinanciere);
 
-// Recommandations marketplace
-route.get('/recommandations', verifyToken, CONTROLLER.getRecommandationsProduits);
-
 // Analyse de sentiments (pour monitoring). Elle etait la seule route du
 // fichier sans jeton.
 route.post('/sentiment', verifyToken, CONTROLLER.analyserSentiment);

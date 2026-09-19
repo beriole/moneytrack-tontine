@@ -95,14 +95,6 @@ const annulerAmende = async (req, res) => {
 
 // --- Cascade de recours ----------------------------------------------
 
-// PUT /tontine/groupes/:groupeId/garant
-const designerGarant = async (req, res) => {
-    try {
-        const membre = await RecouvrementService.designerGarant(req.user.id, req.params.groupeId, req.body.garantId);
-        return res.status(200).json({ message: 'Garant enregistre.', membre });
-    } catch (e) { return repondreErreur(res, e); }
-};
-
 // GET /tontine/cotisations/:cotisationId/recouvrement
 const etatRecouvrement = async (req, res) => {
     try {
@@ -123,16 +115,6 @@ const saisirCaution = async (req, res) => {
     } catch (e) { return repondreErreur(res, e); }
 };
 
-// POST /tontine/cotisations/:cotisationId/appeler-garant
-const appelerGarant = async (req, res) => {
-    try {
-        const r = await RecouvrementService.parGarant({ clientId: req.user.id }, req.params.cotisationId);
-        return res.status(200).json({
-            message: `Garant appele : ${r.montantCouvert} FCFA. La cotisation est soldee.`,
-            ...r
-        });
-    } catch (e) { return repondreErreur(res, e); }
-};
 
 // POST /tontine/groupes/:groupeId/exclure
 const exclure = async (req, res) => {
@@ -149,5 +131,5 @@ const exclure = async (req, res) => {
 module.exports = {
     bloquerCaution, mesCautions, cautionsGroupe, libererCaution,
     infligerAmende, mesAmendes, amendesGroupe, payerAmende, annulerAmende,
-    designerGarant, etatRecouvrement, saisirCaution, appelerGarant, exclure
+    etatRecouvrement, saisirCaution, exclure
 };

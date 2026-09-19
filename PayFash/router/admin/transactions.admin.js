@@ -7,8 +7,6 @@ route.get("/transaction",CONTROLLER.listeTransactions);
 route.get("/transactions/:id",CONTROLLER.detailsTransactions);
 route.get("/benefices",requireRole('ADMIN_FINANCE'),CONTROLLER.benefices);
 route.get("/paiements",CONTROLLER.consulterPaiment);
-route.get("/pret",CONTROLLER.listePrets);
-route.get("/prets/:id",CONTROLLER.detailsPret);
 // Operations financieres sensibles.
 // Ces routes n'executent plus rien : elles ouvrent une demande (volet
 // "maker"). L'execution reclame l'approbation d'un SECOND administrateur,

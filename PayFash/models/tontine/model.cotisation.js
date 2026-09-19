@@ -40,17 +40,6 @@ const TontineCotisation = db.define("TontineCotisation", {
         type: DataTypes.DATE,
         allowNull: true
     },
-    garantPayeurId: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: "Garant qui a regle cette cotisation a la place du membre. La dette change de creancier : elle n'est pas effacee."
-    },
-    montantAvanceGarant: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        defaultValue: 0,
-        comment: "Ce que le garant a avance et que le membre lui doit"
-    },
     transactionId: {
         type: DataTypes.INTEGER,
         allowNull: true,

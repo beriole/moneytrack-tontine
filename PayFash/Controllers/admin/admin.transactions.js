@@ -112,14 +112,6 @@ const consulterPaiment = async (req, res) => {
     }
 };
 
-// GET /api/admin/transaction/pret — module prêts non encore disponible (pas de modèle Loan)
-const listePrets = async (req, res) => {
-    return res.json({ success: true, data: [], message: 'Module Prêts à venir (V3)' });
-};
-const detailsPret = async (req, res) => {
-    return res.status(501).json({ success: false, error: 'Module Prêts non implémenté' });
-};
-
 // =====================================================================
 //  Operations financieres sensibles : maker uniquement.
 //
@@ -182,4 +174,4 @@ const ajusterWallet = async (req, res) => {
     }
 };
 
-module.exports = { listeTransactions, detailsTransactions, benefices, consulterPaiment, listePrets, detailsPret, rembourser, ajusterWallet };
+module.exports = { listeTransactions, detailsTransactions, benefices, consulterPaiment, rembourser, ajusterWallet };
