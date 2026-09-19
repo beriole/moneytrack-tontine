@@ -67,6 +67,44 @@ export const creerGroupe = (corps) => api.post('/tontine/groupes', corps);
 export const rejoindreGroupe = (codeInvitation) => api.post('/tontine/groupes/rejoindre', { codeInvitation });
 export const demarrerGroupe = (id) => api.post(`/tontine/groupes/${id}/demarrer`);
 
+// ---------------------------------------------------------------
+//  Presidence
+//
+//  Elle ne se transmettait pas : le role etait attribue a la creation du
+//  groupe et n'en bougeait plus. Un president qui part laissait la tontine
+//  sans moyen de designer son successeur.
+// ---------------------------------------------------------------
+export const permissionsGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/permissions`);
+export const etatPresidence = (groupeId) => api.get(`/tontine/groupes/${groupeId}/presidence`);
+// Quitter un groupe qui n'a pas demarre. La seule sortie possible etait
+// l'exclusion : un membre qui changeait d'avis partait avec un motif de
+// sanction.
+export const quitterGroupe = (groupeId) => api.post(`/tontine/groupes/${groupeId}/quitter`);
+
+// ---------------------------------------------------------------
+//  Exposition et garanties
+//
+//  L'exposition est ce qu'un membre doit encore a sa tontine ; la garantie,
+//  une part de son epargne, d'un projet ou de son portefeuille qu'il bloque
+//  pour la couvrir. L'argent reste chez lui : seul son disponible baisse.
+// ---------------------------------------------------------------
+export const monExposition = () => api.get('/tontine/moi/exposition');
+export const expositionGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/exposition`);
+export const sourcesGarantie = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties/sources`);
+// Le texte de consentement et son empreinte : a afficher AVANT d'accepter.
+export const simulerGarantie = (groupeId, portefeuilleId, montant) =>
+  api.get(`/tontine/groupes/${groupeId}/garanties/simulation`, { params: { portefeuilleId, montant } });
+// hashTexte : l'empreinte du texte que le membre a lu. Le serveur refuse si
+// elle ne correspond pas a ce qu'il appliquerait.
+export const affecterGarantie = (groupeId, portefeuilleId, montant, hashTexte) =>
+  api.post(`/tontine/groupes/${groupeId}/garanties`, { portefeuilleId, montant, hashTexte });
+export const mesGaranties = () => api.get('/tontine/garanties');
+export const detailGarantie = (id) => api.get(`/tontine/garanties/${id}`);
+export const libererGarantie = (id) => api.post(`/tontine/garanties/${id}/liberer`);
+export const garantiesGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/garanties`);
+export const transmettrePresidence = (groupeId, clientId, motif) =>
+  api.post(`/tontine/groupes/${groupeId}/presidence`, { clientId, motif });
+
 export const cotisationsCycle = (cycleId) => api.get(`/tontine/cycles/${cycleId}/cotisations`);
 export const cotiser = (cycleId, montant) => api.post(`/tontine/cycles/${cycleId}/cotiser`, montant ? { montant } : {});
 export const verserPot = (cycleId) => api.post(`/tontine/cycles/${cycleId}/verser`);
@@ -83,10 +121,8 @@ export const mesCautions = () => api.get('/tontine/cautions/mes-cautions');
 export const bloquerCaution = (groupeId, montant) => api.post(`/tontine/groupes/${groupeId}/caution`, montant ? { montant } : {});
 export const cautionsGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/cautions`);
 
-export const designerGarant = (groupeId, garantId) => api.put(`/tontine/groupes/${groupeId}/garant`, { garantId });
 export const etatRecouvrement = (cotisationId) => api.get(`/tontine/cotisations/${cotisationId}/recouvrement`);
 export const saisirCaution = (cotisationId) => api.post(`/tontine/cotisations/${cotisationId}/saisir-caution`);
-export const appelerGarant = (cotisationId) => api.post(`/tontine/cotisations/${cotisationId}/appeler-garant`);
 
 // ---------------------------------------------------------------
 //  Gouvernance
@@ -125,18 +161,3 @@ export const reglementCourant = (groupeId) => api.get(`/tontine/groupes/${groupe
 export const genererReglement = (groupeId, contenu) => api.post(`/tontine/groupes/${groupeId}/reglement`, { contenu });
 export const signerReglement = (contratId) => api.post(`/tontine/reglements/${contratId}/signer`);
 
-// ---------------------------------------------------------------
-//  Caisse 2 — epargne et credit
-// ---------------------------------------------------------------
-export const etatEpargne = (groupeId) => api.get(`/tontine/groupes/${groupeId}/epargne`);
-export const apporterEpargne = (groupeId, montant) => api.post(`/tontine/groupes/${groupeId}/epargne`, { montant });
-export const creditsGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/credits`);
-export const mesCredits = () => api.get('/tontine/credits/mes-credits');
-export const demanderCredit = (groupeId, corps) => api.post(`/tontine/groupes/${groupeId}/credits`, corps);
-export const decaisserCredit = (demandeId) => api.post(`/tontine/credits/${demandeId}/decaisser`);
-export const echeancierCredit = (demandeId) => api.get(`/tontine/credits/${demandeId}/echeancier`);
-export const rembourserEcheance = (id, montant) => api.post(`/tontine/remboursements/${id}/payer`, montant ? { montant } : {});
-
-export const simulationPartage = (groupeId) => api.get(`/tontine/groupes/${groupeId}/partage/simulation`);
-export const cloturerExercice = (groupeId, exercice) => api.post(`/tontine/groupes/${groupeId}/partage`, { exercice });
-export const historiquePartages = (groupeId) => api.get(`/tontine/groupes/${groupeId}/partage`);

@@ -5,8 +5,8 @@ const GROUPE = require('../../Controllers/tontine/tontine.groupe');
 const CYCLE = require('../../Controllers/tontine/tontine.cycle');
 const DISC = require('../../Controllers/tontine/tontine.discipline');
 const GOUV = require('../../Controllers/tontine/tontine.gouvernance');
-const EPAR = require('../../Controllers/tontine/tontine.epargne');
 const SYNT = require('../../Controllers/tontine/tontine.synthese');
+const GAR = require('../../Controllers/tontine/tontine.garantie');
 
 // =====================================================================
 //  Module tontine — caisse 1 (le tour rotatif).
@@ -30,6 +30,10 @@ route.post("/groupes/rejoindre", verifyToken, GROUPE.rejoindre);
 // Apres les routes litterales, sinon "mes-groupes" serait pris pour un id
 route.get("/groupes/:groupeId", verifyToken, GROUPE.details);
 route.post("/groupes/:groupeId/demarrer", verifyToken, GROUPE.demarrer);
+route.get("/groupes/:groupeId/permissions", verifyToken, GROUPE.permissions);
+route.get("/groupes/:groupeId/presidence", verifyToken, GROUPE.etatPresidence);
+route.post("/groupes/:groupeId/presidence", verifyToken, GROUPE.transmettrePresidence);
+route.post("/groupes/:groupeId/quitter", verifyToken, GROUPE.quitter);
 
 // --- Cycles ----------------------------------------------------------
 route.get("/cycles/:cycleId/cotisations", verifyToken, CYCLE.etat);
@@ -53,12 +57,10 @@ route.post("/amendes/:amendeId/annuler", verifyToken, DISC.annulerAmende);
 route.post("/groupes/:groupeId/amendes", verifyToken, DISC.infligerAmende);
 route.get("/groupes/:groupeId/amendes", verifyToken, DISC.amendesGroupe);
 
-// --- Cascade de recours ----------------------------------------------
-route.put("/groupes/:groupeId/garant", verifyToken, DISC.designerGarant);
+// --- Cascade de recours : amende de retard -> caution -> exclusion ----
 route.post("/groupes/:groupeId/exclure", verifyToken, DISC.exclure);
 route.get("/cotisations/:cotisationId/recouvrement", verifyToken, DISC.etatRecouvrement);
 route.post("/cotisations/:cotisationId/saisir-caution", verifyToken, DISC.saisirCaution);
-route.post("/cotisations/:cotisationId/appeler-garant", verifyToken, DISC.appelerGarant);
 
 // =====================================================================
 //  Gouvernance
@@ -93,26 +95,24 @@ route.post("/groupes/:groupeId/reglement", verifyToken, GOUV.genererReglement);
 route.get("/groupes/:groupeId/reglement", verifyToken, GOUV.reglementCourant);
 
 // =====================================================================
-//  Caisse 2 — epargne, credit, casse annuelle
+//  La tontine se limite au tour rotatif. Les routes de la caisse 2 —
+//  apports d'epargne, credits entre membres, casse annuelle — ont ete
+//  retirees avec elle.
 // =====================================================================
 
-// --- Epargne ---------------------------------------------------------
-route.get("/epargne/mes-apports", verifyToken, EPAR.mesApports);
-route.post("/groupes/:groupeId/epargne", verifyToken, EPAR.apporter);
-route.get("/groupes/:groupeId/epargne", verifyToken, EPAR.etatEpargne);
-
-// --- Credit ----------------------------------------------------------
-route.get("/credits/mes-credits", verifyToken, EPAR.mesCredits);
-route.get("/credits/:demandeId/echeancier", verifyToken, EPAR.echeancier);
-route.post("/credits/:demandeId/decaisser", verifyToken, EPAR.decaisser);
-route.post("/remboursements/:remboursementId/payer", verifyToken, EPAR.rembourser);
-route.post("/groupes/:groupeId/credits", verifyToken, EPAR.demanderCredit);
-route.get("/groupes/:groupeId/credits", verifyToken, EPAR.creditsGroupe);
-
-// --- Casse annuelle --------------------------------------------------
-route.get("/groupes/:groupeId/partage/simulation", verifyToken, EPAR.simulerPartage);
-route.post("/groupes/:groupeId/partage", verifyToken, EPAR.cloturerExercice);
-route.get("/groupes/:groupeId/partage", verifyToken, EPAR.historiquePartages);
+// =====================================================================
+//  Exposition et garanties — ce qu'un membre doit encore, et ce qui le
+//  couvre. Les routes litterales precedent celles a parametre.
+// =====================================================================
+route.get("/moi/exposition", verifyToken, GAR.monExposition);
+route.get("/garanties", verifyToken, GAR.mesGaranties);
+route.get("/garanties/:garantieId", verifyToken, GAR.detail);
+route.post("/garanties/:garantieId/liberer", verifyToken, GAR.liberer);
+route.get("/groupes/:groupeId/exposition", verifyToken, GAR.expositionGroupe);
+route.get("/groupes/:groupeId/garanties/sources", verifyToken, GAR.sources);
+route.get("/groupes/:groupeId/garanties/simulation", verifyToken, GAR.simulation);
+route.get("/groupes/:groupeId/garanties", verifyToken, GAR.garantiesGroupe);
+route.post("/groupes/:groupeId/garanties", verifyToken, GAR.affecter);
 
 // --- Liens avec le budget et les projets ------------------------------
 route.get("/groupes/:groupeId/liens", verifyToken, SYNT.etatLiens);

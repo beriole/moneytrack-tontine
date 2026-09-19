@@ -24,7 +24,6 @@ const TransactionEpargne = require('./model.TransactionEpargne');
 const Plan = require('./model.plan');
 const detailPlan = require('./model.detailPlan');
 const AuditLog = require('./model.auditLog');
-const Pret = require('./model.pret');
 const SystemConfig = require('./model.systemConfig');
 const PendingAction = require('./model.pendingAction');
 
@@ -47,12 +46,11 @@ const {
     TontineVoteReponse,
     TontineEchangeTour,
     TontineEnchere,
-    TontinePoolCredit,
-    TontineDemandeCredit,
-    TontineRemboursementCredit,
-    TontinePartage,
     TontineContrat,
-    TontineSignature
+    TontineSignature,
+    TontineGarantie,
+    TontineGarantieMouvement,
+    TontineConsentementGarantie
 } = tontine;
 
 // Alias pour les relations
@@ -120,9 +118,6 @@ TransactionDepenseProjet.belongsTo(depenseProjet, { foreignKey: "depenseProjetId
 Client.hasMany(Epargne, { foreignKey: 'user_id' });
 Epargne.belongsTo(Client, { foreignKey: 'user_id' });
 
-// Relation client ↔ prêt
-Client.hasMany(Pret, { foreignKey: 'clientId' });
-Pret.belongsTo(Client, { foreignKey: 'clientId' });
 Client.hasMany(Paiement, { foreignKey: 'user_id' });
 Paiement.belongsTo(Client, { foreignKey: 'user_id' });
 
@@ -169,7 +164,6 @@ TontineGroupe.belongsTo(Portefeuille, { foreignKey: 'portefeuilleId', as: 'caiss
 // Adhesions : un client peut etre membre de plusieurs tontines
 Client.hasMany(TontineMembre, { foreignKey: 'clientId', as: 'adhesionsTontine' });
 TontineMembre.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
-TontineMembre.belongsTo(Client, { foreignKey: 'garantId', as: 'garant' });
 TontineMembre.belongsTo(Client, { foreignKey: 'invitePar', as: 'parrain' });
 
 // Le beneficiaire du tour
@@ -184,7 +178,7 @@ TontineCaution.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
 Client.hasMany(TontineAmende, { foreignKey: 'clientId', as: 'amendesTontine' });
 TontineAmende.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
-TontineAmende.belongsTo(Client, { foreignKey: 'infligeePar', as: 'censeur' });
+TontineAmende.belongsTo(Client, { foreignKey: 'infligeePar', as: 'auteur' });
 
 // Gouvernance
 TontineVote.belongsTo(Client, { foreignKey: 'creePar', as: 'auteur' });
@@ -195,12 +189,14 @@ TontineEchangeTour.belongsTo(Client, { foreignKey: 'demandeurId', as: 'demandeur
 TontineEchangeTour.belongsTo(Client, { foreignKey: 'destinataireId', as: 'destinataire' });
 TontineEnchere.belongsTo(Client, { foreignKey: 'clientId', as: 'encherisseur' });
 
-// Credit
-Client.hasMany(TontineDemandeCredit, { foreignKey: 'clientId', as: 'creditsTontine' });
-TontineDemandeCredit.belongsTo(Client, { foreignKey: 'clientId', as: 'emprunteur' });
-
 // Signature du reglement interieur
 TontineSignature.belongsTo(Client, { foreignKey: 'clientId', as: 'signataire' });
+
+// Garanties : le portefeuille source, et le client qui les a consenties
+Client.hasMany(TontineGarantie, { foreignKey: 'clientId', as: 'garantiesTontine' });
+TontineGarantie.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
+TontineGarantie.belongsTo(Portefeuille, { foreignKey: 'portefeuilleId', as: 'portefeuille' });
+TontineConsentementGarantie.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 
 module.exports = {
     Epargne,
@@ -225,7 +221,6 @@ module.exports = {
     Plan,
     detailPlan,
     AuditLog,
-    Pret,
     SystemConfig,
     PendingAction,
     Paiement,
@@ -245,10 +240,9 @@ module.exports = {
     TontineVoteReponse,
     TontineEchangeTour,
     TontineEnchere,
-    TontinePoolCredit,
-    TontineDemandeCredit,
-    TontineRemboursementCredit,
-    TontinePartage,
     TontineContrat,
-    TontineSignature
+    TontineSignature,
+    TontineGarantie,
+    TontineGarantieMouvement,
+    TontineConsentementGarantie
 };

@@ -45,12 +45,11 @@ import MembresTontine from './screens/tontine/MembresTontine';
 import CotisationsCycle from './screens/tontine/CotisationsCycle';
 import Cotiser from './screens/tontine/Cotiser';
 import MesAmendes from './screens/tontine/MesAmendes';
+import MesGaranties from './screens/tontine/MesGaranties';
+import AffecterGarantie from './screens/tontine/AffecterGarantie';
 import VotesTontine from './screens/tontine/VotesTontine';
 import EchangeTour from './screens/tontine/EchangeTour';
 import EncheresTontine from './screens/tontine/EncheresTontine';
-import CaisseEpargne from './screens/tontine/CaisseEpargne';
-import DemanderCredit from './screens/tontine/DemanderCredit';
-import RemboursementCredit from './screens/tontine/RemboursementCredit';
 import ReglementTontine from './screens/tontine/ReglementTontine';
 import SuccesTontine from './screens/tontine/SuccesTontine';
 import PlanTresorerie from './screens/tontine/PlanTresorerie';
@@ -110,12 +109,11 @@ export default function Stack(){
                 <stack.Screen name='CotisationsCycle' component={CotisationsCycle} />
                 <stack.Screen name='Cotiser' component={Cotiser} />
                 <stack.Screen name='MesAmendes' component={MesAmendes} />
+                <stack.Screen name='MesGaranties' component={MesGaranties} />
+                <stack.Screen name='AffecterGarantie' component={AffecterGarantie} />
                 <stack.Screen name='VotesTontine' component={VotesTontine} />
                 <stack.Screen name='EchangeTour' component={EchangeTour} />
                 <stack.Screen name='EncheresTontine' component={EncheresTontine} />
-                <stack.Screen name='CaisseEpargne' component={CaisseEpargne} />
-                <stack.Screen name='DemanderCredit' component={DemanderCredit} />
-                <stack.Screen name='RemboursementCredit' component={RemboursementCredit} />
                 <stack.Screen name='ReglementTontine' component={ReglementTontine} />
                 <stack.Screen name='SuccesTontine' component={SuccesTontine} />
                 <stack.Screen name='PlanTresorerie' component={PlanTresorerie} />

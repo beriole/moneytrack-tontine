@@ -2,15 +2,20 @@
 
 const {
     db, Client, Portefeuille,
-    TontineGroupe, TontineMembre, TontineCycle, TontineCotisation, TontinePoolCredit
+    TontineGroupe, TontineMembre, TontineCycle, TontineCotisation,
+    TontineCaution
 } = require('../../models');
 const ENV = require('../../config/index');
 const TirageService = require('./tirage.service');
 const EcheancierService = require('./echeancier.service');
 const CycleService = require('./cycle.service');
-const { ErreurTontine, nombre } = require('./commun');
+const {
+    ErreurTontine, nombre, exigerGroupeNonGele,
+    portefeuilleClient, portefeuilleCaution, transferer, ecrireTransaction
+} = require('./commun');
+const { exigerActe, pourAdhesion } = require('./permissions');
+const { journaliser } = require('../audit.service');
 
-const TYPES = ['rotative', 'credit', 'mixte'];
 const MODES_ORDRE = ['tirage', 'vote', 'enchere', 'anciennete'];
 
 class GroupeService {
@@ -20,14 +25,22 @@ class GroupeService {
     // -----------------------------------------------------------------
     static async creerGroupe(clientId, donnees) {
         const {
-            nom, description, type = 'rotative', montantParPeriode,
+            nom, description, type, montantParPeriode,
             frequence = 'mensuelle', membresMax, modeOrdre = 'tirage',
-            pourcentageCaution, bareme, destinationAmendes, modeAcces = 'prive', dateDebut,
+            pourcentageCaution, bareme, modeAcces = 'prive', dateDebut,
             cautionObligatoire = false
         } = donnees;
 
         if (!nom || !String(nom).trim()) throw new ErreurTontine(400, 'Le nom du groupe est obligatoire');
-        if (!TYPES.includes(type)) throw new ErreurTontine(400, `Type invalide (attendu : ${TYPES.join(', ')})`);
+        // Une tontine est un tour rotatif. Les formules « credit » et
+        // « mixte », qui ajoutaient une caisse d'epargne et de credit, ont ete
+        // retirees. Une application anterieure peut encore envoyer le champ :
+        // 'rotative' reste accepte, le reste est refuse plutot que de creer
+        // en silence autre chose que ce qui etait demande.
+        if (type !== undefined && type !== null && type !== 'rotative') {
+            throw new ErreurTontine(400,
+                "Les tontines d'epargne et de credit ne sont plus proposees : seule la tontine rotative existe");
+        }
         if (!EcheancierService.frequencesValides().includes(frequence)) {
             throw new ErreurTontine(400, `Frequence invalide (attendu : ${EcheancierService.frequencesValides().join(', ')})`);
         }
@@ -39,7 +52,6 @@ class GroupeService {
             const groupe = await TontineGroupe.create({
                 nom: String(nom).trim(),
                 description: description || null,
-                type,
                 montantParPeriode: nombre(montantParPeriode),
                 devise: 'XAF',
                 frequence,
@@ -52,8 +64,6 @@ class GroupeService {
                 // membre actif n'a pas depose sa caution.
                 cautionObligatoire: cautionObligatoire === true || cautionObligatoire === 'true',
                 bareme: bareme || null,
-                destinationAmendes: destinationAmendes
-                    || (type === 'rotative' ? 'pot_cycle' : 'epargne'),
                 modeAcces,
                 codeInvitation: await this._codeLibre(t),
                 statut: 'en_attente',
@@ -84,15 +94,6 @@ class GroupeService {
                 statut: 'actif',
                 dateAdhesion: new Date()
             }, { transaction: t });
-
-            // Caisse 2 : le pool n'existe que si le groupe fait du credit
-            if (type === 'credit' || type === 'mixte') {
-                await TontinePoolCredit.create({
-                    groupeId: groupe.id,
-                    tauxInteretDefaut: ENV.TONTINE_TAUX_CREDIT_DEFAUT,
-                    derniereMaj: new Date()
-                }, { transaction: t });
-            }
 
             return groupe;
         });
@@ -156,8 +157,7 @@ class GroupeService {
                 {
                     model: TontineMembre, as: 'membres',
                     include: [{ model: Client, as: 'client', attributes: ['id', 'nom', 'email', 'telephone'] }]
-                },
-                { model: TontinePoolCredit, as: 'poolCredit', required: false }
+                }
             ],
             order: [[{ model: TontineMembre, as: 'membres' }, 'ordreBeneficiaire', 'ASC']]
         });
@@ -170,7 +170,18 @@ class GroupeService {
             })
             : null;
 
-        return { groupe, cycleEnCours: cycle, monRole: membre.role, monTour: membre.ordreBeneficiaire };
+        // Les permissions voyagent avec le detail du groupe : l'application
+        // decidait de ses boutons en comparant monRole a une liste de roles
+        // recopiee dans cinq ecrans, et devait donc etre republiee a chaque
+        // evolution du bureau. Elle lit desormais ce que le serveur accepte.
+        // monRole reste renvoye — il sert encore a l'affichage.
+        return {
+            groupe,
+            cycleEnCours: cycle,
+            monRole: membre.role,
+            monTour: membre.ordreBeneficiaire,
+            permissions: pourAdhesion(membre)
+        };
     }
 
     // -----------------------------------------------------------------
@@ -224,6 +235,100 @@ class GroupeService {
     }
 
     // -----------------------------------------------------------------
+    //  Sortie volontaire
+    // -----------------------------------------------------------------
+    /**
+     * Quitter un groupe qui n'a pas encore demarre.
+     *
+     * Il n'y avait aucun moyen de partir : la seule sortie etait
+     * l'exclusion, qui est une sanction, avec son motif et sa trace. Un
+     * membre qui change d'avis entre l'adhesion et le premier cycle
+     * n'avait rien fait de mal.
+     *
+     * Une fois la rotation lancee, la sortie n'est plus une formalite : les
+     * tours sont attribues, les cotisations projetees, et partir laisse une
+     * dette aux autres. Elle reste donc fermee ici — c'est l'affaire de
+     * l'exclusion, ou du dispositif de garanties a venir.
+     */
+    static async quitterGroupe(clientId, groupeId) {
+        return db.transaction(async (t) => {
+            const groupe = await TontineGroupe.findByPk(groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+            if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
+            exigerGroupeNonGele(groupe, 'la sortie du groupe');
+
+            if (groupe.statut !== 'en_attente') {
+                throw new ErreurTontine(409,
+                    "La tontine a demarre : votre tour est attribue et vos cotisations sont attendues. "
+                    + 'Une sortie passe desormais par une decision du groupe.');
+            }
+
+            const membre = await TontineMembre.findOne({
+                where: { groupeId, clientId }, transaction: t, lock: t.LOCK.UPDATE
+            });
+            if (!membre) throw new ErreurTontine(403, "Vous n'etes pas membre de ce groupe");
+            if (['sorti', 'exclu'].includes(membre.statut)) {
+                throw new ErreurTontine(409, 'Vous ne faites deja plus partie de ce groupe');
+            }
+            if (membre.role === 'president') {
+                throw new ErreurTontine(409,
+                    'Vous presidez ce groupe : transmettez la presidence avant de le quitter');
+            }
+
+            // La caution bloquee repart avec lui : le groupe n'a pas demarre,
+            // elle ne garantit plus rien.
+            const caution = await TontineCaution.findOne({
+                where: { groupeId, clientId }, transaction: t, lock: t.LOCK.UPDATE
+            });
+            let cautionRestituee = 0;
+            if (caution && caution.statut !== 'liberee') {
+                const CautionService = require('./caution.service');
+                cautionRestituee = CautionService.disponible(caution);
+                if (cautionRestituee > 0) {
+                    const sequestre = await portefeuilleCaution(groupe, t, true);
+                    const portefeuille = await portefeuilleClient(clientId, t, true);
+                    await transferer(sequestre, portefeuille, cautionRestituee, t);
+                    await ecrireTransaction({
+                        montant: cautionRestituee,
+                        type: 'caution_liberation',
+                        description: `Caution restituee au depart — ${groupe.nom}`,
+                        clientId,
+                        groupeId,
+                        reference: `TNT-CAU-Q-${caution.id}`
+                    }, t);
+                }
+                await caution.update({
+                    statut: 'liberee', dateLiberation: new Date()
+                }, { transaction: t });
+            }
+
+            await membre.update({
+                statut: 'sorti', cautionPayee: false, ordreBeneficiaire: null
+            }, { transaction: t });
+
+            // Ses garanties aussi : le groupe n'a pas demarre, elles ne
+            // couvrent rien.
+            const GarantieService = require('./garantie.service');
+            const garanties = await GarantieService.libererToutesDans({ systeme: true }, clientId, groupeId,
+                'Depart volontaire avant le demarrage', t);
+
+            const restants = await TontineMembre.count({
+                where: { groupeId, statut: ['invite', 'actif'] }, transaction: t
+            });
+            await groupe.update({ membresActuels: restants }, { transaction: t });
+
+            await journaliser({
+                acteur: { clientId },
+                action: 'TONTINE_SORTIE_VOLONTAIRE',
+                cible: `TontineMembre#${membre.id}`,
+                details: { groupeId, cautionRestituee, garantiesLiberees: garanties.total, membresRestants: restants },
+                transaction: t
+            });
+
+            return { groupe, membre, cautionRestituee, garantiesLiberees: garanties.total, membresRestants: restants };
+        });
+    }
+
+    // -----------------------------------------------------------------
     //  Demarrage de la rotation
     // -----------------------------------------------------------------
     static async demarrerGroupe(clientId, groupeId) {
@@ -232,12 +337,7 @@ class GroupeService {
                 transaction: t, lock: t.LOCK.UPDATE
             });
             if (!groupe) throw new ErreurTontine(404, 'Groupe introuvable');
-            if (groupe.createurId !== clientId) {
-                const moi = await TontineMembre.findOne({ where: { groupeId, clientId }, transaction: t });
-                if (!moi || moi.role !== 'president') {
-                    throw new ErreurTontine(403, 'Seul le president peut demarrer la tontine');
-                }
-            }
+            await exigerActe('demarrerTontine', groupeId, clientId, t);
             if (groupe.statut !== 'en_attente') {
                 throw new ErreurTontine(409, `Ce groupe est deja au statut "${groupe.statut}"`);
             }
@@ -272,8 +372,10 @@ class GroupeService {
             }
 
             // La caution n'etait exigee nulle part : configuree a la creation,
-            // affichee dans l'application, jamais controlee. La cascade de
-            // recours caution -> garant pouvait donc etre vide des le depart.
+            // affichee dans l'application, jamais controlee. Le recours a la
+            // caution pouvait donc etre vide des le depart — et c'est
+            // desormais le SEUL recours en argent, l'appel au garant ayant
+            // ete supprime. Il est d'autant moins question qu'il soit vide.
             if (groupe.cautionObligatoire) {
                 const { TontineCaution } = require('../../models');
                 const sans = [];

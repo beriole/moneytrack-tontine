@@ -11,10 +11,9 @@ import {
   mesAmendes, bloquerCaution, etatLiens, lierBudget, destinationsTour, routerTour,
   etatPrelevement, activerPrelevement, desactiverPrelevement,
   messageErreur, fcfa, dateCourte,
+  quitterGroupe
 } from '../../utils/tontineApi';
 import { useTontine } from '../../utils/TontineContext';
-
-const ROLES_BUREAU = ['president', 'tresorier'];
 
 export default function DetailTontine() {
   const navigation = useNavigation();
@@ -73,8 +72,10 @@ export default function DetailTontine() {
   if (chargement) return <Chargement />;
   if (!data) return null;
 
-  const { groupe, cycleEnCours, monRole, monTour } = data;
-  const estBureau = ROLES_BUREAU.includes(monRole);
+  const { groupe, cycleEnCours, monRole, monTour, permissions } = data;
+  // Ce que le serveur accepte, et non une liste de roles recopiee ici :
+  // l'ecran n'a plus a savoir de quoi se compose le bureau.
+  const actes = permissions?.actes || {};
   const moi = groupe.membres?.find((m) => m.clientId === monId);
   const maCaution = moi?.cautionPayee;
   const potComplet = cotisations?.potComplet;
@@ -177,7 +178,7 @@ export default function DetailTontine() {
           />
         )}
 
-        {estBureau && groupe.statut === 'en_attente' && (
+        {actes.demarrerTontine && groupe.statut === 'en_attente' && (
           <Bouton
             titre="Demarrer la tontine"
             icone="play-circle"
@@ -196,7 +197,35 @@ export default function DetailTontine() {
           />
         )}
 
-        {estBureau && cycleEnCours && (
+        {groupe.statut === 'en_attente' && !actes.demarrerTontine && (
+          <Bouton
+            titre="Quitter cette tontine"
+            icone="logout"
+            variante="secondaire"
+            charge={action}
+            onPress={() =>
+              Alert.alert(
+                'Quitter la tontine',
+                "Vous sortez avant le demarrage : votre caution eventuelle vous est rendue et aucune cotisation ne vous sera reclamee. "
+                  + 'Une fois la rotation lancee, ce ne sera plus possible.',
+                [
+                  { text: 'Annuler', style: 'cancel' },
+                  {
+                    text: 'Quitter',
+                    style: 'destructive',
+                    onPress: () =>
+                      executer(async () => {
+                        await quitterGroupe(groupeId);
+                        navigation.goBack();
+                      }, 'Vous avez quitte la tontine'),
+                  },
+                ]
+              )
+            }
+          />
+        )}
+
+        {actes.verserPot && cycleEnCours && (
           <Bouton
             titre={potComplet ? 'Verser le pot au beneficiaire' : 'Verser le pot (incomplet)'}
             icone="swap"
@@ -206,10 +235,10 @@ export default function DetailTontine() {
             onPress={() => executer(() => verserPot(cycleEnCours.id), 'Pot verse')}
           />
         )}
-        {estBureau && cycleEnCours && !potComplet && (
+        {actes.saisirCaution && cycleEnCours && !potComplet && (
           <Text style={s.aide}>
-            Le versement n'est possible que lorsque toutes les cotisations du cycle sont soldees. Utilisez la caution ou
-            le garant d'un retardataire depuis la liste des cotisations.
+            Le versement n'est possible que lorsque toutes les cotisations du cycle sont soldees. Saisissez la caution
+            d'un retardataire depuis la liste des cotisations.
           </Text>
         )}
 
@@ -323,9 +352,12 @@ export default function DetailTontine() {
             { icone: 'gavel', label: 'Votes et decisions', ecran: 'VotesTontine' },
             { icone: 'swap-horizontal', label: 'Echanges de tours', ecran: 'EchangeTour' },
             { icone: 'alert-octagon', label: 'Mes amendes', ecran: 'MesAmendes' },
-            ...(groupe.type !== 'rotative'
-              ? [{ icone: 'piggy-bank', label: "Caisse d'epargne et credit", ecran: 'CaisseEpargne' }]
+            // Garantir ses cotisations futures : proposer tant que la tontine
+            // court, et que l'adhesion permet d'agir.
+            ...(actes.affecterGarantie && groupe.statut !== 'termine'
+              ? [{ icone: 'shield-plus-outline', label: 'Garantir mes cotisations', ecran: 'AffecterGarantie' }]
               : []),
+            { icone: 'shield-check-outline', label: 'Mes garanties', ecran: 'MesGaranties' },
             { icone: 'file-document-outline', label: 'Reglement interieur', ecran: 'ReglementTontine' },
           ]}
           groupeId={groupeId}
@@ -334,14 +366,10 @@ export default function DetailTontine() {
 
         <Text style={s.section}>Regles</Text>
         <View style={s.carte}>
-          <Ligne label="Type de caisse" valeur={groupe.type} />
           <Ligne label="Ordre de passage" valeur={groupe.modeOrdre} />
           <Ligne label="Membres" valeur={`${groupe.membresActuels} / ${groupe.membresMax}`} />
           <Ligne label="Caution a l'entree" valeur={`${Number(groupe.pourcentageCaution)} %`} />
-          <Ligne
-            label="Destination des amendes"
-            valeur={groupe.destinationAmendes === 'epargne' ? "Caisse d'epargne" : 'Pot du cycle'}
-          />
+          <Ligne label="Destination des amendes" valeur="Le membre lese" />
           <Ligne label="Mon role" valeur={monRole} />
           <Ligne label="Mon tour" valeur={monTour ? `${monTour}` : 'non attribue'} dernier />
         </View>

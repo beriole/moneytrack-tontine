@@ -129,11 +129,11 @@ class NotificationTontineService {
         );
     }
 
-    static async garantAppele(garantId, defaillantNom, groupe, montant) {
+    static async garantieMobilisee(clientId, groupe, montant) {
         await this.envoyer(
-            garantId,
-            `Vous vous etiez porte garant : ${fcfa(montant)} ont ete preleves pour couvrir la cotisation de ${defaillantNom} dans « ${groupe.nom} ».`,
-            { type: 'alerte', lien: { ecran: 'DetailTontine', params: { groupeId: groupe.id } } }
+            clientId,
+            `${fcfa(montant)} de votre garantie ont ete preleves dans « ${groupe.nom} » pour completer une cotisation impayee.`,
+            { type: 'alerte', lien: { ecran: 'MesGaranties', params: {} } }
         );
     }
 
@@ -170,28 +170,6 @@ class NotificationTontineService {
             `${demandeurNom} propose d'echanger son tour ${echange.tourDemandeur} contre le votre (${echange.tourDestinataire}) dans « ${groupe.nom} »${nombre(echange.montantCompensation) > 0 ? `, avec ${fcfa(echange.montantCompensation)} de compensation` : ''}.`,
             { lien: { ecran: 'EchangeTour', params: { groupeId: groupe.id } } }
         );
-    }
-
-    // -----------------------------------------------------------------
-    //  Caisse 2
-    // -----------------------------------------------------------------
-    static async creditDecaisse(demande, groupe) {
-        await this.envoyer(
-            demande.clientId,
-            `Votre credit de ${fcfa(demande.montant)} dans « ${groupe.nom} » a ete decaisse. Premiere echeance a venir.`,
-            { lien: { ecran: 'RemboursementCredit', params: { demandeId: demande.id, groupeId: groupe.id } } }
-        );
-    }
-
-    static async exerciceCloture(groupe, detail) {
-        for (const part of detail) {
-            if (!part.total) continue;
-            await this.envoyer(
-                part.clientId,
-                `Casse de « ${groupe.nom} » : vous recevez ${fcfa(part.total)} — ${fcfa(part.apports)} d'apports et ${fcfa(part.partProduit)} de produit (${part.quotePart} % de la caisse).`,
-                { lien: { ecran: 'CaisseEpargne', params: { groupeId: groupe.id } } }
-            );
-        }
     }
 
     // -----------------------------------------------------------------

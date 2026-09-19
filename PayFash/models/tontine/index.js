@@ -1,8 +1,13 @@
 // =====================================================================
 //  Module tontine — modeles et associations internes au module.
 //
-//  Perimetre : caisse 1 (le tour), caisse 2 (epargne / credit),
-//  caisse 4 (amendes). La caisse de solidarite est hors perimetre.
+//  Perimetre : le tour rotatif, et la discipline qui le protege
+//  (caution et amendes).
+//
+//  La tontine comptait plusieurs caisses. Elle se limite desormais a la
+//  premiere : chacun cotise, le pot revient a un membre par periode.
+//  La caisse d'epargne et le credit entre membres (ex-caisse 2) ont ete
+//  retires ; la caisse de solidarite n'avait jamais ete construite.
 //
 //  Les associations vers Client, Portefeuille et Transaction sont
 //  declarees dans models/index.js, la ou ces modeles sont en portee :
@@ -19,12 +24,11 @@ const TontineVote = require('./model.vote');
 const TontineVoteReponse = require('./model.voteReponse');
 const TontineEchangeTour = require('./model.echangeTour');
 const TontineEnchere = require('./model.enchere');
-const TontinePoolCredit = require('./model.poolCredit');
-const TontineDemandeCredit = require('./model.demandeCredit');
-const TontineRemboursementCredit = require('./model.remboursementCredit');
-const TontinePartage = require('./model.partage');
 const TontineContrat = require('./model.contrat');
 const TontineSignature = require('./model.signature');
+const TontineGarantie = require('./model.garantie');
+const TontineGarantieMouvement = require('./model.garantieMouvement');
+const TontineConsentementGarantie = require('./model.consentementGarantie');
 
 // ---------------------------------------------------------------
 //  Caisse 1 — le tour
@@ -57,7 +61,7 @@ TontineMembre.hasMany(TontineEnchere, { foreignKey: 'membreId', as: 'encheres' }
 TontineEnchere.belongsTo(TontineMembre, { foreignKey: 'membreId', as: 'membre' });
 
 // ---------------------------------------------------------------
-//  Caisse 4 — discipline et garanties
+//  Discipline — ce qui protege le tour
 // ---------------------------------------------------------------
 
 // Caution : une par membre et par groupe
@@ -65,6 +69,15 @@ TontineGroupe.hasMany(TontineCaution, { foreignKey: 'groupeId', as: 'cautions', 
 TontineCaution.belongsTo(TontineGroupe, { foreignKey: 'groupeId', as: 'groupe' });
 TontineMembre.hasOne(TontineCaution, { foreignKey: 'membreId', as: 'caution', onDelete: 'CASCADE', hooks: true });
 TontineCaution.belongsTo(TontineMembre, { foreignKey: 'membreId', as: 'membre' });
+
+// Garanties : des fonds du membre bloques sur son propre portefeuille
+TontineGroupe.hasMany(TontineGarantie, { foreignKey: 'groupeId', as: 'garanties', onDelete: 'CASCADE', hooks: true });
+TontineGarantie.belongsTo(TontineGroupe, { foreignKey: 'groupeId', as: 'groupe' });
+TontineMembre.hasMany(TontineGarantie, { foreignKey: 'membreId', as: 'garanties', onDelete: 'CASCADE', hooks: true });
+TontineGarantie.belongsTo(TontineMembre, { foreignKey: 'membreId', as: 'membre' });
+TontineGarantie.hasMany(TontineGarantieMouvement, { foreignKey: 'garantieId', as: 'mouvements', onDelete: 'CASCADE', hooks: true });
+TontineGarantieMouvement.belongsTo(TontineGarantie, { foreignKey: 'garantieId', as: 'garantie' });
+TontineGarantie.belongsTo(TontineConsentementGarantie, { foreignKey: 'consentementId', as: 'consentement' });
 
 // Amendes
 TontineGroupe.hasMany(TontineAmende, { foreignKey: 'groupeId', as: 'amendes', onDelete: 'CASCADE', hooks: true });
@@ -91,29 +104,6 @@ TontineContrat.hasMany(TontineSignature, { foreignKey: 'contratId', as: 'signatu
 TontineSignature.belongsTo(TontineContrat, { foreignKey: 'contratId', as: 'contrat' });
 TontineContrat.belongsTo(TontineContrat, { foreignKey: 'contratAmendeId', as: 'versionPrecedente' });
 
-// ---------------------------------------------------------------
-//  Caisse 2 — epargne et credit
-// ---------------------------------------------------------------
-
-TontineGroupe.hasOne(TontinePoolCredit, { foreignKey: 'groupeId', as: 'poolCredit', onDelete: 'CASCADE', hooks: true });
-TontinePoolCredit.belongsTo(TontineGroupe, { foreignKey: 'groupeId', as: 'groupe' });
-
-TontinePoolCredit.hasMany(TontineDemandeCredit, { foreignKey: 'poolId', as: 'demandes', onDelete: 'CASCADE', hooks: true });
-TontineDemandeCredit.belongsTo(TontinePoolCredit, { foreignKey: 'poolId', as: 'pool' });
-
-TontineMembre.hasMany(TontineDemandeCredit, { foreignKey: 'membreId', as: 'demandesCredit' });
-TontineDemandeCredit.belongsTo(TontineMembre, { foreignKey: 'membreId', as: 'membre' });
-
-// Une demande de credit passe par un vote d'approbation du groupe
-TontineDemandeCredit.belongsTo(TontineVote, { foreignKey: 'voteId', as: 'vote' });
-
-TontineDemandeCredit.hasMany(TontineRemboursementCredit, { foreignKey: 'demandeId', as: 'echeances', onDelete: 'CASCADE', hooks: true });
-TontineRemboursementCredit.belongsTo(TontineDemandeCredit, { foreignKey: 'demandeId', as: 'demande' });
-
-// La casse annuelle
-TontineGroupe.hasMany(TontinePartage, { foreignKey: 'groupeId', as: 'partages', onDelete: 'CASCADE', hooks: true });
-TontinePartage.belongsTo(TontineGroupe, { foreignKey: 'groupeId', as: 'groupe' });
-
 module.exports = {
     TontineGroupe,
     TontineMembre,
@@ -125,10 +115,9 @@ module.exports = {
     TontineVoteReponse,
     TontineEchangeTour,
     TontineEnchere,
-    TontinePoolCredit,
-    TontineDemandeCredit,
-    TontineRemboursementCredit,
-    TontinePartage,
     TontineContrat,
-    TontineSignature
+    TontineSignature,
+    TontineGarantie,
+    TontineGarantieMouvement,
+    TontineConsentementGarantie
 };

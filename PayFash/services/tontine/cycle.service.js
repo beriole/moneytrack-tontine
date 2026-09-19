@@ -11,6 +11,8 @@ const {
     ErreurTontine, nombre, arrondir,
     portefeuilleClient, caisseGroupe, ecrireTransaction, transferer, exigerGroupeActif
 } = require('./commun');
+const { journaliser } = require('../audit.service');
+const { exigerActe } = require('./permissions');
 
 class CycleService {
 
@@ -237,15 +239,12 @@ class CycleService {
             exigerGroupeActif(groupe, 'le versement du pot');
 
             // --- Autorisation -------------------------------------------
+            // Le controle etait ecrit ici a la main, avec sa propre liste de
+            // roles : il repondait a la meme question que les dix autres
+            // services sans passer par le meme endroit. Il la pose desormais
+            // au meme endroit qu'eux.
             if (!acteur.systeme) {
-                const moi = await TontineMembre.findOne({
-                    where: { groupeId: groupe.id, clientId: acteur.clientId }, transaction: t
-                });
-                const autorise = groupe.createurId === acteur.clientId
-                    || (moi && ['president', 'tresorier'].includes(moi.role));
-                if (!autorise) {
-                    throw new ErreurTontine(403, 'Seuls le president et le tresorier peuvent declencher le versement');
-                }
+                await exigerActe('verserPot', groupe.id, acteur.clientId, t);
             }
 
             // --- Invariant : le pot doit etre complet -------------------
@@ -290,7 +289,7 @@ class CycleService {
             // ete collecte, pas le pot theorique. Marquer les cotisations
             // manquantes comme payees pour faire tomber le controle serait
             // mentir au grand livre : l'argent n'est pas la. Le manque reste
-            // une dette, recouvrable ensuite par la caution ou le garant.
+            // une dette, recouvrable ensuite sur la caution.
             const manque = force ? arrondir(Math.max(0, attendu - arrondir(caisse.solde))) : 0;
 
             // Le beneficiaire prend TOUT le contenu de la caisse, pas
@@ -399,6 +398,24 @@ class CycleService {
 
             await cycle.update({ statut: 'complete', dateFin: new Date() }, { transaction: t });
 
+            // Le mouvement le plus lourd du module ne laissait aucune trace
+            // d'audit : AuditLog n'acceptait qu'un administrateur. L'ecriture
+            // se fait DANS la transaction — un pot verse sans trace serait
+            // exactement le trou que la piste doit interdire.
+            await journaliser({
+                acteur: acteur.systeme ? { systeme: true } : { clientId: acteur.clientId },
+                action: force ? 'TONTINE_POT_VERSE_FORCE' : 'TONTINE_POT_VERSE',
+                cible: `TontineCycle#${cycle.id}`,
+                details: {
+                    groupeId: groupe.id,
+                    beneficiaireId: cycle.beneficiaireId,
+                    pot, potAttendu: attendu, net, frais, decote, manque,
+                    cotisationsImpayees: force ? impayees.length : 0,
+                    destination: destinationChoisie ? destinationChoisie.id : null
+                },
+                transaction: t
+            });
+
             const suite = await this.avancerRotation(cycle, groupe, t);
 
             return {
@@ -457,6 +474,31 @@ class CycleService {
 
         if (!suivant) {
             await groupe.update({ statut: 'termine' }, { transaction: t });
+            // Les adhesions restaient 'actif' indefiniment dans un groupe
+            // clos : tout comptage de membres actifs s'en trouvait fausse,
+            // et rien ne distinguait « va au bout de ses engagements » de
+            // « participe encore ».
+            await TontineMembre.update({ statut: 'termine' }, {
+                where: { groupeId: groupe.id, statut: 'actif' }, transaction: t
+            });
+
+            // Plus rien a garantir : chaque garantie encore bloquee revient au
+            // disponible de son membre — sauf s'il doit encore une amende, qui
+            // n'est pas eteinte par la fin de la rotation.
+            const GarantieService = require('./garantie.service');
+            const { TontineAmende, TontineGarantie } = require('../../models');
+            const concernes = await TontineGarantie.findAll({
+                where: { groupeId: groupe.id, statut: { [Op.in]: ['active', 'partiellement_utilisee'] } },
+                attributes: ['clientId'], group: ['clientId'], transaction: t
+            });
+            for (const { clientId } of concernes) {
+                const dues = await TontineAmende.count({
+                    where: { groupeId: groupe.id, clientId, statut: 'due' }, transaction: t
+                });
+                if (dues > 0) continue;
+                await GarantieService.libererToutesDans({ systeme: true }, clientId, groupe.id,
+                    'Fin de la rotation : plus aucune cotisation a garantir', t);
+            }
             return { cycleSuivant: null, terminee: true };
         }
 
@@ -483,19 +525,86 @@ class CycleService {
     }
 
     // -----------------------------------------------------------------
+    //  Couverture d'un impaye par les garanties du membre
+    // -----------------------------------------------------------------
+    /**
+     * Complete une cotisation impayee en mobilisant les garanties de son
+     * debiteur — le montant manquant, pas un franc de plus. L'argent passe
+     * de la part bloquee de son portefeuille a la caisse du groupe, et la
+     * cotisation est creditee d'autant, dans une seule transaction.
+     */
+    static async couvrirParGaranties(cotisationId, acteur = { systeme: true }) {
+        const GarantieService = require('./garantie.service');
+        return db.transaction(async (t) => {
+            const cotisation = await TontineCotisation.findByPk(cotisationId, { transaction: t, lock: t.LOCK.UPDATE });
+            if (!cotisation) throw new ErreurTontine(404, 'Cotisation introuvable');
+            if (cotisation.statut === 'payee') return { mobilise: 0, cotisationSoldee: true };
+
+            const cycle = await TontineCycle.findByPk(cotisation.cycleId, { transaction: t, lock: t.LOCK.UPDATE });
+            const groupe = await TontineGroupe.findByPk(cycle.groupeId, { transaction: t, lock: t.LOCK.UPDATE });
+
+            const reste = arrondir(nombre(cotisation.montantDu) - nombre(cotisation.montantPaye));
+            const r = await GarantieService.mobiliserDans(acteur, cotisation.clientId, groupe, reste,
+                `cotisation du cycle ${cycle.numeroCycle} impayee a l'echeance`, t);
+            if (r.mobilise <= 0) return { mobilise: 0, cotisationSoldee: false, resteACouvrir: reste };
+
+            const paye = arrondir(nombre(cotisation.montantPaye) + r.mobilise);
+            const soldee = paye >= nombre(cotisation.montantDu);
+            await cotisation.update({
+                montantPaye: paye,
+                statut: soldee ? 'payee' : 'partielle',
+                datePaiement: soldee ? new Date() : cotisation.datePaiement
+            }, { transaction: t });
+            await cycle.update({
+                montantCollecte: arrondir(nombre(cycle.montantCollecte) + r.mobilise)
+            }, { transaction: t });
+
+            return {
+                mobilise: r.mobilise,
+                cotisationSoldee: soldee,
+                resteACouvrir: arrondir(nombre(cotisation.montantDu) - paye),
+                clientId: cotisation.clientId,
+                groupe
+            };
+        }).then(async (r) => {
+            if (r.mobilise > 0) {
+                try {
+                    const NotificationService = require('./notification.service');
+                    await NotificationService.garantieMobilisee(r.clientId, r.groupe, r.mobilise);
+                } catch (e) {
+                    console.log('[tontine] notification de mobilisation non envoyee :', e.message);
+                }
+            }
+            return r;
+        });
+    }
+
+    // -----------------------------------------------------------------
     //  Echeances (appele par le cron)
     // -----------------------------------------------------------------
     /**
-     * A l'echeance, le cron NE VERSE PAS. Il constate.
+     * A l'echeance, le cron NE VERSE PAS. Il constate, sanctionne, et
+     * mobilise la garantie deja constituee.
      *
      * NjanguiPay completait et payait tout cycle dont la date etait
      * depassee, quel que soit l'etat des cotisations. Dans une vraie
      * tontine, une echeance atteinte avec un pot incomplet ouvre la
-     * procedure de discipline (phase 3), elle ne declenche pas un
-     * versement silencieux.
+     * procedure de discipline, elle ne declenche pas un versement
+     * silencieux. Le versement reste donc explicite.
+     *
+     * La saisie de caution, elle, est passee du cote du systeme. Elle
+     * attendait qu'une personne du bureau la declenche : la caution etait
+     * bloquee pour exactement ce cas, le montant est ecrit dans le
+     * reglement, et rien ne s'y decide — le seul effet de l'attente etait
+     * qu'un pot reste incomplet pendant que la garantie dormait. Elle ne
+     * prend que ce qui manque, et laisse le reste bloque.
+     *
+     * Elle reste actionnable a la main : un bureau qui veut saisir avant
+     * l'echeance le peut toujours.
      */
     static async traiterEcheances(maintenant = new Date()) {
         const { AmendeService } = require('./amende.service');
+        const CautionService = require('./caution.service');
 
         const cycles = await TontineCycle.findAll({
             where: { statut: 'actif', dateFinPrevue: { [Op.lte]: maintenant } }
@@ -503,7 +612,9 @@ class CycleService {
 
         const rapport = {
             examines: cycles.length, enDefaut: 0, prets: 0,
-            cotisationsEnRetard: 0, amendesLevees: 0
+            cotisationsEnRetard: 0, amendesLevees: 0,
+            cautionsSaisies: 0, montantRecouvre: 0, cotisationsSoldeesParCaution: 0,
+            garantiesMobilisees: 0, montantGaranties: 0, cotisationsSoldeesParGarantie: 0
         };
 
         for (const cycle of cycles) {
@@ -534,6 +645,66 @@ class CycleService {
                 await cycle.update({ statut: 'en_defaut' }, { transaction: t });
                 rapport.enDefaut++;
             });
+
+            // La saisie ouvre sa propre transaction, apres celle du constat :
+            // CautionService verrouille les memes lignes, et les imbriquer
+            // bloquerait. Chaque saisie est independante — l'echec de l'une
+            // ne doit pas empecher les autres.
+            const aCouvrir = await TontineCotisation.findAll({
+                where: { cycleId: cycle.id, statut: { [Op.in]: ['en_retard', 'partielle'] } }
+            });
+            for (const c of aCouvrir) {
+                try {
+                    const r = await CautionService.saisirPourCotisation({ systeme: true }, c.id);
+                    rapport.cautionsSaisies++;
+                    rapport.montantRecouvre = arrondir(rapport.montantRecouvre + r.montantSaisi);
+                    if (r.cotisationSoldee) rapport.cotisationsSoldeesParCaution++;
+                } catch (e) {
+                    // Pas de caution, deja consommee, groupe gele : autant de
+                    // cas normaux. Le retard reste constate, la dette aussi.
+                    if (!(e instanceof ErreurTontine)) {
+                        console.log('[tontine] saisie automatique en echec :', e.message);
+                    }
+                }
+            }
+
+            // Puis les garanties. L'ordre est celui de la proximite de
+            // l'argent : la caution est deja au sequestre du groupe, la
+            // garantie est encore sur le portefeuille du membre. Chacune ne
+            // prend que ce qui manque apres la precedente.
+            const restantes = await TontineCotisation.findAll({
+                where: { cycleId: cycle.id, statut: { [Op.in]: ['en_retard', 'partielle'] } }
+            });
+            for (const c of restantes) {
+                try {
+                    const r = await this.couvrirParGaranties(c.id);
+                    if (r.mobilise > 0) {
+                        rapport.garantiesMobilisees++;
+                        rapport.montantGaranties = arrondir(rapport.montantGaranties + r.mobilise);
+                        rapport.montantRecouvre = arrondir(rapport.montantRecouvre + r.mobilise);
+                        if (r.cotisationSoldee) rapport.cotisationsSoldeesParGarantie++;
+                    }
+                } catch (e) {
+                    if (!(e instanceof ErreurTontine)) {
+                        console.log('[tontine] mobilisation de garantie en echec :', e.message);
+                    }
+                }
+            }
+
+            // Si les saisies ont tout couvert, le cycle n'est plus en defaut :
+            // le pot est complet et le versement peut avoir lieu. Le laisser
+            // au statut 'en_defaut' decrirait un etat qui n'existe plus, et
+            // ferait passer pour defaillant un cycle integralement finance.
+            if (rapport.cotisationsSoldeesParCaution > 0 || rapport.cotisationsSoldeesParGarantie > 0) {
+                const reste = await TontineCotisation.count({
+                    where: { cycleId: cycle.id, statut: { [Op.ne]: 'payee' } }
+                });
+                if (reste === 0) {
+                    await cycle.update({ statut: 'actif' });
+                    rapport.enDefaut--;
+                    rapport.prets++;
+                }
+            }
         }
 
         return rapport;

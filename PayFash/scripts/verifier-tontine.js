@@ -4,7 +4,7 @@
 //
 //  Usage :  node scripts/verifier-tontine.js
 //
-//  Partie A (hors base)  : definitions des 16 modeles et associations.
+//  Partie A (hors base)  : definitions des 15 modeles et associations.
 //  Partie B (avec base)  : derive entre les modeles et le schema reel.
 //     Repond a "peut-on rester en alter:false sans casser l'existant ?".
 //     Ignoree proprement si MySQL n'est pas joignable.
@@ -22,8 +22,8 @@ let erreurs = 0;
 function verifierDefinitions() {
     const noms = Object.keys(models).filter(k => k.startsWith('Tontine'));
 
-    console.log('=== MODELES TONTINE (' + noms.length + '/16) ===');
-    if (noms.length !== 16) erreurs++;
+    console.log('=== MODELES TONTINE (' + noms.length + '/15) ===');
+    if (noms.length !== 15) erreurs++;
     for (const nom of noms) {
         const M = models[nom];
         const nbCol = Object.keys(M.rawAttributes).length;
@@ -36,12 +36,13 @@ function verifierDefinitions() {
     console.log('\n=== ASSOCIATIONS ===');
     const attendues = [
         ['TontineGroupe', 'createur'], ['TontineGroupe', 'caisse'], ['TontineGroupe', 'membres'],
-        ['TontineGroupe', 'cycles'], ['TontineGroupe', 'poolCredit'], ['TontineGroupe', 'amendes'],
-        ['TontineMembre', 'client'], ['TontineMembre', 'garant'], ['TontineMembre', 'cotisations'],
+        ['TontineGroupe', 'cycles'], ['TontineGroupe', 'amendes'],
+        ['TontineMembre', 'client'], ['TontineMembre', 'cotisations'],
         ['TontineCycle', 'beneficiaire'], ['TontineCycle', 'cotisations'],
         ['TontineCotisation', 'cycle'], ['TontineCotisation', 'membre'], ['TontineCotisation', 'client'],
-        ['TontineAmende', 'censeur'], ['TontineCaution', 'membre'],
-        ['TontineVote', 'reponses'], ['TontineDemandeCredit', 'echeances'],
+        ['TontineAmende', 'auteur'], ['TontineCaution', 'membre'],
+        ['TontineVote', 'reponses'],
+        ['TontineGarantie', 'mouvements'], ['TontineGarantie', 'consentement'], ['TontineGarantie', 'portefeuille'],
         ['TontineContrat', 'signatures']
     ];
     let manquantes = 0;
@@ -54,7 +55,7 @@ function verifierDefinitions() {
     console.log('  ' + (attendues.length - manquantes) + '/' + attendues.length + ' associations internes');
 
     for (const a of ['tontinesCreees', 'adhesionsTontine', 'cotisationsTontine',
-                     'amendesTontine', 'cautionsTontine', 'creditsTontine']) {
+                     'amendesTontine', 'cautionsTontine']) {
         const ok = !!models.Client.associations[a];
         if (!ok) erreurs++;
         console.log('  ' + (ok ? 'ok      ' : 'MANQUANT') + '  Client.' + a);
@@ -122,7 +123,7 @@ async function verifierDerive() {
         }
     }
 
-    console.log('  Tables tontine deja creees        : ' + tontineDejaLa + '/16');
+    console.log('  Tables tontine deja creees        : ' + tontineDejaLa + '/15');
     console.log('  Tables du noyau absentes          : ' + tablesAbsentes);
     console.log('  Colonnes du noyau absentes        : ' + colonnesAbsentes);
     if (tablesAbsentes + colonnesAbsentes === 0) {
@@ -131,6 +132,33 @@ async function verifierDerive() {
         erreurs++;
         console.log('  => Derive detectee. Demarrer UNE fois avec alter:true dans servers.js,');
         console.log('     verifier, puis remettre alter:false.');
+    }
+
+    // --- Invariant des fonds bloques -----------------------------------
+    // La seule source de reserve sur un portefeuille est une garantie. Si
+    // les deux divergent, de l'argent est bloque sans raison — ou une
+    // garantie promet un argent qui n'est plus immobilise.
+    console.log('\n=== FONDS BLOQUES ===');
+    if (tables.has('tontine_garanties')) {
+        const [ecarts] = await models.db.query(`
+            SELECT p.id, p.montantReserve reserve, COALESCE(g.bloque, 0) garanties
+              FROM Portefeuilles p
+              LEFT JOIN (SELECT portefeuilleId,
+                                SUM(montantInitial - montantUtilise - montantLibere) bloque
+                           FROM tontine_garanties
+                          WHERE statut IN ('active', 'partiellement_utilisee')
+                          GROUP BY portefeuilleId) g ON g.portefeuilleId = p.id
+             WHERE ABS(p.montantReserve - COALESCE(g.bloque, 0)) > 0.01`);
+        const [tot] = await models.db.query('SELECT COALESCE(SUM(montantReserve),0) t FROM Portefeuilles');
+        console.log('  Total bloque sur les portefeuilles : ' + Number(tot[0].t) + ' FCFA');
+        if (ecarts.length) {
+            erreurs++;
+            for (const e of ecarts) {
+                console.log('  ECART portefeuille ' + e.id + ' : reserve ' + e.reserve + ', garanties ' + e.garanties);
+            }
+        } else {
+            console.log('  => Chaque reserve est justifiee par ses garanties.');
+        }
     }
 }
 
