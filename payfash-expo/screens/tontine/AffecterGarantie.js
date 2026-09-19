@@ -126,7 +126,7 @@ export default function AffecterGarantie() {
         </Text>
 
         {!apercu && (
-          <Bouton titre="Lire les conditions" icone="file-document-outline" charge={envoi} onPress={lire} />
+          <Bouton titre="Lire les conditions" icone="file-text" charge={envoi} onPress={lire} />
         )}
 
         {apercu && (

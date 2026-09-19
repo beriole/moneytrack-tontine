@@ -147,7 +147,7 @@ export default function Retrait() {
           </Text>
         </View>
         <View style={{ marginTop: 26 }}>
-          <Bouton titre="Vérifier maintenant" icone="reload1" variante="secondaire"
+          <Bouton titre="Vérifier maintenant" icone="reload" variante="secondaire"
             onPress={() => sonder(attente.reference)} />
           <TouchableOpacity onPress={() => { clearInterval(minuterie.current); setAttente(null); }}
             style={{ marginTop: 16, alignItems: 'center' }}>

@@ -170,7 +170,7 @@ export default function Recharge() {
           {attente.lien ? (
             <Bouton titre="Rouvrir la page de paiement" icone="link" onPress={() => Linking.openURL(attente.lien)} />
           ) : null}
-          <Bouton titre="Vérifier maintenant" icone="reload1" variante="secondaire"
+          <Bouton titre="Vérifier maintenant" icone="reload" variante="secondaire"
             onPress={() => sonder(attente.reference, true)} />
           <TouchableOpacity onPress={annulerAttente} style={{ marginTop: 16, alignItems: 'center' }}>
             <Text style={{ color: colors.textMuted, fontSize: 13 }}>Arrêter l'attente</Text>

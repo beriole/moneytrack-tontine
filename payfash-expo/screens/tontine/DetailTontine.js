@@ -440,7 +440,7 @@ export default function DetailTontine() {
                   {actes.affecterGarantie && (
                     <Bouton
                       titre={`Garantir ${fcfa(couverture.manque)}`}
-                      icone="shield-plus-outline"
+                      icone="safety"
                       onPress={() => navigation.navigate('AffecterGarantie', { groupeId, montant: couverture.manque })}
                     />
                   )}

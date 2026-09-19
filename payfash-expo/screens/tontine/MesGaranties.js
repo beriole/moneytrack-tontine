@@ -165,7 +165,7 @@ export default function MesGaranties() {
                       </Text>
                       <Bouton
                         titre={`Reprendre ${fcfa(bloc.liberable)}`}
-                        icone="lock-open-variant-outline"
+                        icone="unlock"
                         variante="success"
                         charge={action === `excedent-${bloc.groupeId}`}
                         onPress={() => reprendre(bloc)}
@@ -175,7 +175,7 @@ export default function MesGaranties() {
                   {bloc.manque > 0 && bloc.statutGroupe !== 'termine' && (
                     <Bouton
                       titre={`Completer la couverture (${fcfa(bloc.manque)})`}
-                      icone="shield-plus-outline"
+                      icone="safety"
                       variante="secondaire"
                       onPress={() => navigation.navigate('AffecterGarantie', { groupeId: bloc.groupeId, montant: bloc.manque })}
                     />
@@ -210,7 +210,7 @@ export default function MesGaranties() {
                     {rendable && (
                       <Bouton
                         titre={`Recuperer ${fcfa(g.restant)}`}
-                        icone="lock-open-variant-outline"
+                        icone="unlock"
                         charge={action === g.id}
                         onPress={() => liberer(g)}
                       />
