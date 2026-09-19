@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MoneyTrack — Back-office</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================================================== Connexion -->
+<div class="ecran-connexion" id="ecran-connexion">
+    <form class="carte-connexion" id="form-connexion">
+        <div class="marque">
+            <div class="logo">MT</div>
+            <div>
+                <h1>MoneyTrack</h1>
+                <p>Back-office d'administration</p>
+            </div>
+        </div>
+
+        <div id="erreur-connexion"></div>
+
+        <label class="label" for="email">Adresse électronique</label>
+        <input class="champ" type="email" id="email" autocomplete="username" required
+               placeholder="admin@moneytrack.cm">
+
+        <label class="label" for="motDePasse">Mot de passe</label>
+        <input class="champ" type="password" id="motDePasse" autocomplete="current-password" required
+               placeholder="••••••••">
+
+        <button class="bouton large" type="submit" id="bouton-connexion">Se connecter</button>
+
+        <p class="aide">
+            Les jetons d'administration sont signés en RS256 et expirent au bout de deux heures.
+            Chaque action sensible est inscrite au journal d'audit sous votre nom.
+        </p>
+    </form>
+</div>
+
+<!-- ================================================== Application -->
+<div class="app" id="app">
+    <aside class="barre-laterale" id="barre-laterale">
+        <div class="marque">
+            <div class="logo">MT</div>
+            <div>
+                <h1>MoneyTrack</h1>
+                <p>Back-office</p>
+            </div>
+        </div>
+
+        <nav class="nav" id="nav"></nav>
+
+        <div class="pied-barre">
+            <div class="avatar" id="avatar">?</div>
+            <div style="flex:1;min-width:0">
+                <div class="nom" id="nom-admin">—</div>
+                <div class="role" id="role-admin">—</div>
+            </div>
+            <button class="bouton fantome petit" id="bouton-deconnexion" title="Se déconnecter">Sortir</button>
+        </div>
+    </aside>
+
+    <main class="contenu">
+        <button class="bouton secondaire petit bascule" id="bascule">☰ Menu</button>
+        <div id="page"></div>
+    </main>
+</div>
+
+<!-- ================================================== Modale et notifications -->
+<div class="voile" id="voile">
+    <div class="modale" id="modale"></div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
