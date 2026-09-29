@@ -361,8 +361,9 @@ class GarantieService {
             const prenable = Math.min(part, Fonds.reserve(pf), arrondir(pf.solde));
             if (prenable <= 0) continue;
 
-            await Fonds.debiterReserve(pf, prenable, t);
-            await Fonds.crediter(caisse, prenable, t);
+            await Fonds.transfererDepuisReserve(pf, caisse, prenable, t, {
+                clientId, groupeTontineId: groupe.id, description: `Garantie mobilisee — ${motif}`
+            });
 
             const transaction = await ecrireTransaction({
                 montant: prenable,

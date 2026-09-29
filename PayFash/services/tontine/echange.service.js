@@ -151,7 +151,10 @@ class EchangeService {
             if (compensation > 0) {
                 const pfDemandeur = await portefeuilleClient(echange.demandeurId, t, true);
                 const pfDestinataire = await portefeuilleClient(echange.destinataireId, t, true);
-                await transferer(pfDemandeur, pfDestinataire, compensation, t);
+                await transferer(pfDemandeur, pfDestinataire, compensation, t, {
+                    type: 'echange_tour', clientId: echange.demandeurId, groupeTontineId: echange.groupeId,
+                    description: 'Compensation d\'echange de tour'
+                });
 
                 transaction = await ecrireTransaction({
                     montant: compensation,

@@ -115,22 +115,29 @@ const dateHeure = (v) => {
 // Les couleurs de statut reprennent `statutCouleur` du module mobile,
 // pour qu'un groupe suspendu ait la meme teinte des deux cotes.
 const TEINTES = {
-    actif: 'succes', payee: 'succes', payé: 'succes', 'Succès': 'succes', approuve: 'succes',
+    actif: 'succes', payee: 'succes', payé: 'succes', SUCCESS: 'succes', approuve: 'succes',
     APPROUVE: 'succes', SUCCESSFUL: 'succes', resolu: 'succes', 'résolu': 'succes',
     complete: 'succes', remboursee: 'succes', decaissee: 'accent', approuvee: 'succes',
     suspendu: 'danger', impayee: 'danger', due: 'danger', en_defaut: 'danger', rejete: 'danger',
-    REJETE: 'danger', rejetee: 'danger', FAILED: 'danger', 'Annulée': 'danger', EXPIRED: 'danger',
+    REJETE: 'danger', rejetee: 'danger', FAILED: 'danger', CANCELLED: 'danger', EXPIRED: 'danger',
     en_attente: 'warning', EN_ATTENTE: 'warning', partielle: 'warning', PENDING: 'warning',
-    'En confirmation': 'warning', A_VERIFIER: 'warning', 'A verifier': 'warning', ouvert: 'warning',
-    termine: 'neutre', annulee: 'neutre', REFUNDED: 'neutre', 'remboursée': 'neutre',
+    PENDING: 'warning', PROCESSING: 'accent', A_VERIFIER: 'warning', 'A verifier': 'warning', ouvert: 'warning',
+    termine: 'neutre', annulee: 'neutre', REFUNDED: 'neutre', REVERSED: 'neutre',
     regle: 'succes', FAIBLE: 'succes', MODERE: 'warning', ELEVE: 'danger',
     ELIGIBLE: 'succes', NON_ELIGIBLE: 'danger',
+};
+
+// Les statuts d'ecriture sont des codes (section 31) : la pastille les
+// montre en francais, sans les renommer en base.
+const LIBELLE_STATUT = {
+    PENDING: 'En attente', PROCESSING: 'En cours', SUCCESS: 'Réussie',
+    FAILED: 'Échouée', REVERSED: 'Remboursée', CANCELLED: 'Annulée',
 };
 
 const pastille = (valeur) => {
     if (valeur === null || valeur === undefined || valeur === '') return '<span class="faible">—</span>';
     const teinte = TEINTES[valeur] || 'accent';
-    return `<span class="pastille p-${teinte}">${echapper(valeur)}</span>`;
+    return `<span class="pastille p-${teinte}">${echapper(LIBELLE_STATUT[valeur] || valeur)}</span>`;
 };
 
 const LIBELLE_ROLE = {
@@ -232,6 +239,7 @@ const ICONES = {
     kyc: '<path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3zm-1 14-4-4 1.4-1.4L11 13.2l5.6-5.6L18 9l-7 7z"/>',
     litiges: '<path d="M12 2 1 21h22L12 2zm1 15h-2v-2h2v2zm0-4h-2V9h2v4z"/>',
     transactions: '<path d="M7 7h10v3l5-4-5-4v3H5v6h2V7zm10 10H7v-3l-5 4 5 4v-3h12v-6h-2v4z"/>',
+    ledger: '<path d="M4 3h13a3 3 0 0 1 3 3v15H7a3 3 0 0 1-3-3V3zm3 3v11h11V6H7zm2 2h7v2H9V8zm0 4h7v2H9v-2z"/>',
     validations: '<path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>',
     aml: '<path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/>',
     plans: '<path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2h18zM3 10v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8H3zm4 6h4v-2H7v2z"/>',
@@ -252,6 +260,7 @@ const MENU = [
     { id: 'defauts', titre: 'Défauts et restrictions' },
     { groupe: 'Finance' },
     { id: 'transactions', titre: 'Transactions' },
+    { id: 'ledger', titre: 'Grand livre' },
     { id: 'validations', titre: 'Validations' },
     { id: 'aml', titre: 'Anti-fraude' },
     { groupe: 'Plateforme' },
@@ -637,29 +646,106 @@ PAGES.litiges = async (params = {}) => {
         <tr>
             <td class="mono">#${l.id}</td>
             <td>${echapper(l.Client?.nom || '—')}<div class="faible">${echapper(l.Client?.email || '')}</div></td>
-            <td>${echapper((l.description || '').slice(0, 90))}${(l.description || '').length > 90 ? '…' : ''}</td>
+            <td>${echapper((l.description || '').slice(0, 70))}${(l.description || '').length > 70 ? '…' : ''}</td>
+            <td>${l.objetType
+                ? `${echapper(l.objetType)}<div class="faible mono">#${echapper(l.objetId)}</div>`
+                : '<span class="faible">libre</span>'}</td>
             <td>${pastille(l.statut)}</td>
-            <td>${date(l.createdAt)}</td>
+            <td>${date(l.dateSoummission || l.createdAt)}</td>
             <td class="actions">
-                <button class="bouton fantome petit" data-action="litige-detail" data-id="${l.id}">Voir</button>
-                ${l.statut !== 'résolu' && l.statut !== 'resolu'
-                    ? `<button class="bouton succes petit" data-action="litige-resoudre" data-id="${l.id}">Résoudre</button>` : ''}
+                <button class="bouton fantome petit" data-action="litige-detail" data-id="${l.id}">Instruire</button>
             </td>
         </tr>`);
 
     return `
-        ${enTete('Litiges', 'Réclamations ouvertes par les clients depuis l\'application.')}
+        ${enTete('Litiges', "Réclamations des clients. Les pièces de l'opération contestée sont conservées à l'ouverture.")}
         <div class="carte">
             <div class="filtres">
                 <select class="champ" id="filtre-litige">
                     <option value="">Tous les statuts</option>
-                    <option value="ouvert" ${statut === 'ouvert' ? 'selected' : ''}>Ouverts</option>
+                    <option value="ouvert" ${statut === 'ouvert' ? 'selected' : ''}>À traiter</option>
                     <option value="résolu" ${statut === 'résolu' ? 'selected' : ''}>Résolus</option>
+                    <option value="rejeté" ${statut === 'rejeté' ? 'selected' : ''}>Rejetés</option>
                 </select>
                 <button class="bouton petit" data-action="filtrer-litiges">Filtrer</button>
             </div>
-            ${tableau(['N°', 'Client', 'Objet', 'Statut', 'Ouvert le', ''], lignes)}
+            ${tableau(['N°', 'Client', 'Réclamation', 'Opération contestée', 'Statut', 'Ouvert le', ''], lignes)}
             ${pagination(reponse.meta, 'page-litiges')}
+        </div>`;
+};
+
+/* ---------------------------------------------------- Grand livre */
+PAGES.ledger = async (params = {}) => {
+    const page = params.page || 1;
+    const type = params.type || '';
+    const [e, j] = await Promise.all([
+        api('/ledger/etat'),
+        apiComplet(`/ledger?page=${page}&limit=25${type ? '&type=' + encodeURIComponent(type) : ''}`),
+    ]);
+    const mouvements = j.data || [];
+
+    // Les deux faces cote a cote : d'ou vient l'argent, ou il va.
+    const faces = (m) => {
+        const sortie = m.faces.filter((f) => f.sens === 'debit');
+        const entree = m.faces.filter((f) => f.sens === 'credit');
+        const nommer = (l) => l.map((f) => `${echapper(f.libelle || f.compte)} <span class="faible">${fcfa(f.montant)}</span>`).join('<br>');
+        return `<td>${nommer(sortie) || '—'}</td><td>${nommer(entree) || '—'}</td>`;
+    };
+
+    const lignes = mouvements.map((m) => `
+        <tr>
+            <td>${dateHeure(m.date)}<div class="faible mono">#${m.id}</div></td>
+            <td>${echapper(m.type)}<div class="faible">${echapper((m.description || '').slice(0, 60))}</div></td>
+            ${faces(m)}
+            <td class="num">${fcfa(m.montant)}</td>
+            <td>${m.client ? echapper(m.client) : '<span class="faible">—</span>'}</td>
+        </tr>`);
+
+    const sain = e.balance === 0 && e.desequilibres === 0 && e.portefeuillesEnEcart.length === 0;
+
+    return `
+        ${enTete('Grand livre',
+            "Chaque mouvement d'argent, avec ses deux faces. Un franc sorti d'un compte est entré dans un autre.")}
+
+        ${sain
+            ? '<div class="info"><div class="titre">Le livre est équilibré</div>Chaque mouvement porte autant au débit qu’au crédit, et chaque portefeuille dit la même chose que son compte.</div>'
+            : `<div class="alerte"><div class="titre">Le livre ne tient plus</div>
+                ${e.desequilibres} mouvement(s) déséquilibré(s), écart général de ${fcfa(e.balance)},
+                ${e.portefeuillesEnEcart.length} portefeuille(s) en écart avec leur compte.</div>`}
+
+        <div class="grille c4">
+            ${tuile('Mouvements', nombre(e.mouvements), 'depuis l’ouverture du livre')}
+            ${tuile('Total écrit', fcfa(e.total), 'somme des débits, égale aux crédits')}
+            ${tuile('Écart général', fcfa(e.balance), 'doit rester nul', e.balance === 0 ? 'succes' : 'danger')}
+            ${tuile('Portefeuilles en écart', nombre(e.portefeuillesEnEcart.length),
+                'solde différent de son compte', e.portefeuillesEnEcart.length === 0 ? 'succes' : 'danger')}
+        </div>
+
+        ${e.portefeuillesEnEcart.length ? `
+        <div class="carte">
+            <h3>Écarts à instruire</h3>
+            ${tableau(['Compte', 'Portefeuille', 'Grand livre', 'Écart'], e.portefeuillesEnEcart.map((x) => `
+                <tr>
+                    <td class="mono">${echapper(x.compte)}</td>
+                    <td class="num">${fcfa(x.solde)}</td>
+                    <td class="num">${fcfa(x.livre)}</td>
+                    <td class="num">${fcfa(x.ecart)}</td>
+                </tr>`))}
+            <p class="aide">Un écart signifie qu’un mouvement d’argent n’est pas passé par le grand livre.</p>
+        </div>` : ''}
+
+        <div class="carte">
+            <h3>Journal</h3>
+            <div class="filtres">
+                <select class="champ" id="filtre-ledger">
+                    <option value="">Tous les types</option>
+                    ${e.parType.map((t) =>
+                        `<option value="${echapper(t.type)}" ${type === t.type ? 'selected' : ''}>${echapper(t.type)} (${t.nombre})</option>`).join('')}
+                </select>
+                <button class="bouton petit" data-action="filtrer-ledger">Filtrer</button>
+            </div>
+            ${tableau(['Date', 'Mouvement', 'Débité de', 'Crédité à', 'Montant', 'Client'], lignes)}
+            ${pagination(j.meta, 'page-ledger')}
         </div>`;
 };
 
@@ -667,7 +753,7 @@ PAGES.litiges = async (params = {}) => {
 PAGES.transactions = async (params = {}) => {
     const page = params.page || 1;
     const type = params.type || '';
-    const reponse = await apiComplet(`/transaction/transaction?page=${page}&limit=20${type ? '&type=' + encodeURIComponent(type) : ''}`);
+    const reponse = await apiComplet(`/transaction/transaction?page=${page}&limit=20${type ? '&type=' + encodeURIComponent(type) : ''}${params.statut ? '&statut=' + params.statut : ''}`);
     const lignes0 = reponse.data || [];
 
     let benefices = null;
@@ -712,6 +798,11 @@ PAGES.transactions = async (params = {}) => {
                     <option value="">Tous les types</option>
                     ${['recharge', 'retrait', 'transfert', 'cotisation', 'versement', 'amende', 'frais_plateforme', 'remboursement']
                         .map((v) => `<option value="${v}" ${type === v ? 'selected' : ''}>${v}</option>`).join('')}
+                </select>
+                <select class="champ" id="filtre-statut-tx">
+                    <option value="">Tous les statuts</option>
+                    ${Object.entries(LIBELLE_STATUT).map(([v, l]) =>
+                        `<option value="${v}" ${params.statut === v ? 'selected' : ''}>${l}</option>`).join('')}
                 </select>
                 <button class="bouton petit" data-action="filtrer-transactions">Filtrer</button>
             </div>
@@ -1163,27 +1254,86 @@ const ACTIONS = {
 
     'litige-detail': async (el) => {
         const l = await api(`/litige/litige/${el.dataset.id}`);
+        const p = l.preuves || {};
+        const objet = p.objet;
+        // L'instantane est pris par le serveur a l'ouverture : s'il ne
+        // correspond plus a son empreinte, il a ete retouche depuis.
+        const integrite = l.preuvesIntactes === true
+            ? '<span class="pastille p-succes">intactes</span>'
+            : l.preuvesIntactes === false
+                ? '<span class="pastille p-danger">modifiées depuis l\'ouverture</span>'
+                : '<span class="faible">aucune pièce jointe</span>';
+
+        const bloc = (titre, valeur) => (valeur === undefined || valeur === null
+            ? '' : `<h4>${echapper(titre)}</h4><pre class="preuve">${echapper(JSON.stringify(valeur, null, 2))}</pre>`);
+
         ouvrirModale(`
             <h3>Litige #${echapper(l.id)}</h3>
             <p class="sous">${echapper(l.Client?.nom || '')} — ${echapper(l.Client?.email || '')}</p>
             ${ligneDetail('Statut', pastille(l.statut))}
-            ${ligneDetail('Ouvert le', dateHeure(l.createdAt))}
-            <div class="carte" style="margin-top:14px;background:var(--base)">${echapper(l.description || '—')}</div>
-            <div class="modale-actions"><button class="bouton fantome" data-fermer>Fermer</button></div>`);
+            ${ligneDetail('Ouvert le', dateHeure(l.dateSoummission || l.createdAt))}
+            ${ligneDetail('Objet contesté', objet ? echapper(`${objet.type} #${objet.id} — ${objet.resume}`) : '<span class="faible">signalement libre</span>')}
+            ${ligneDetail('Pièces', integrite)}
+            ${l.empreintePreuves ? ligneDetail('Empreinte', `<span class="mono">${echapper(String(l.empreintePreuves).slice(0, 24))}…</span>`) : ''}
+
+            <h4>Ce que dit le client</h4>
+            <div class="carte" style="background:var(--base)">${echapper(p.descriptionComplete || l.description || '—')}</div>
+
+            ${l.reponse ? `<h4>Réponse donnée</h4><div class="carte" style="background:var(--base)">${echapper(l.reponse)}</div>` : ''}
+
+            ${bloc('Opération', p.cotisation || p.incident || p.amende || p.garantie || p.caution || p.cycle || p.enchere || p.decision || p.transaction || p.restriction)}
+            ${bloc('Écritures rattachées', p.ecritures)}
+            ${bloc('Mouvements de garantie', p.mouvements)}
+            ${bloc('Journal d\'audit', p.audit)}
+            ${bloc('Risque évalué au même moment', p.risque)}
+
+            <div class="modale-actions">
+                <button class="bouton fantome" data-fermer>Fermer</button>
+                ${['résolu', 'rejeté'].includes(l.statut) ? '' : boutonGarde(
+                    `<button class="bouton succes" data-action="litige-trancher" data-id="${l.id}" %%ATTR%%>Trancher</button>`,
+                    ['SUPPORT', 'COMPLIANCE'])}
+            </div>`, true);
         voile().querySelector('[data-fermer]').onclick = fermerModale;
+        document.getElementById('modale').querySelectorAll('[data-action]').forEach((b) => {
+            b.onclick = (ev) => ACTIONS[b.dataset.action] && ACTIONS[b.dataset.action](b, ev);
+        });
     },
 
-    'litige-resoudre': async (el) => {
-        const r = await confirmer({
-            titre: 'Marquer ce litige comme résolu ?',
-            texte: 'Le client verra le litige clos. Assurez-vous que la réclamation a bien été traitée.',
-            libelle: 'Marquer résolu', genre: 'succes',
-        });
-        if (r.ok) agir(() => api(`/litige/litige/${el.dataset.id}/resoudre`, { method: 'PATCH', body: { statut: 'résolu' } }), 'Litige résolu');
+    'litige-trancher': async (el) => {
+        ouvrirModale(`
+            <h3>Trancher le litige #${echapper(el.dataset.id)}</h3>
+            <p class="sous">Le client recevra votre réponse telle quelle, avec une notification. Expliquez la décision : c'est elle qu'il gardera.</p>
+            <label class="label" for="l-statut">Décision</label>
+            <select class="champ" id="l-statut">
+                <option value="résolu">Lui donner raison — résolu</option>
+                <option value="rejeté">Rejeter la réclamation</option>
+                <option value="en cours">Prendre en charge (pas encore tranché)</option>
+            </select>
+            <label class="label" for="l-reponse">Réponse au client</label>
+            <textarea class="champ" id="l-reponse" placeholder="Ce qui a été vérifié, et ce qui en découle"></textarea>
+            <div class="modale-actions">
+                <button class="bouton fantome" data-fermer>Annuler</button>
+                <button class="bouton succes" id="l-valider">Envoyer la décision</button>
+            </div>`);
+        voile().querySelector('[data-fermer]').onclick = fermerModale;
+        document.getElementById('l-valider').onclick = async () => {
+            const statut = document.getElementById('l-statut').value;
+            const reponse = document.getElementById('l-reponse').value.trim();
+            if (statut !== 'en cours' && !reponse) { toast('Expliquez la décision au client.', 'erreur'); return; }
+            fermerModale();
+            await agir(() => api(`/litige/litige/${el.dataset.id}/resoudre`, { method: 'PATCH', body: { statut, reponse } }),
+                statut === 'en cours' ? 'Litige pris en charge' : 'Décision envoyée');
+        };
     },
 
     /* --- Transactions --- */
-    'filtrer-transactions': () => afficherPage('transactions', true, { type: document.getElementById('filtre-type').value }),
+    'filtrer-ledger': () => afficherPage('ledger', true, { type: document.getElementById('filtre-ledger').value }),
+    'page-ledger': (el) => afficherPage('ledger', true, { page: Number(el.dataset.page) }),
+
+    'filtrer-transactions': () => afficherPage('transactions', true, {
+        type: document.getElementById('filtre-type').value,
+        statut: document.getElementById('filtre-statut-tx').value,
+    }),
     'page-transactions': (el) => afficherPage('transactions', true, { page: Number(el.dataset.page) }),
     'exporter-transactions': () => telecharger('/export/transactions.xlsx', 'transactions.xlsx'),
 

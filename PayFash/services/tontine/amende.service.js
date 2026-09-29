@@ -216,7 +216,10 @@ class AmendeService {
             let libelle;
             if (cible.mode === 'pot') {
                 const caisse = await caisseGroupe(groupe, t, true);
-                await transferer(portefeuille, caisse, montant, t);
+                await transferer(portefeuille, caisse, montant, t, {
+                    type: 'amende', clientId, groupeTontineId: groupe.id,
+                    description: `Amende (${amende.motif}) — au pot du cycle`
+                });
                 libelle = cible.cycle ? `pot du cycle ${cible.cycle.numeroCycle}` : 'pot du premier cycle';
                 if (cible.cycle) {
                     // Le pot grossit : le beneficiaire lese est indemnise au versement.
@@ -226,7 +229,10 @@ class AmendeService {
                 }
             } else if (cible.mode === 'beneficiaire') {
                 const recoit = await portefeuilleClient(cible.cycle.beneficiaireId, t, true);
-                await transferer(portefeuille, recoit, montant, t);
+                await transferer(portefeuille, recoit, montant, t, {
+                    type: 'amende_indemnite', clientId, groupeTontineId: groupe.id,
+                    description: `Amende (${amende.motif}) — au beneficiaire lese`
+                });
                 await ecrireTransaction({
                     montant,
                     type: 'amende_indemnite',
@@ -251,7 +257,10 @@ class AmendeService {
                     const somme = arrondir(part + (i === 0 ? reste : 0));
                     if (somme <= 0) continue;
                     const recoit = await portefeuilleClient(m.clientId, t, true);
-                    await transferer(portefeuille, recoit, somme, t);
+                    await transferer(portefeuille, recoit, somme, t, {
+                        type: 'amende_indemnite', clientId, groupeTontineId: groupe.id,
+                        description: `Part d'amende (${amende.motif}) — ${groupe.nom}`
+                    });
                     await ecrireTransaction({
                         montant: somme,
                         type: 'amende_indemnite',

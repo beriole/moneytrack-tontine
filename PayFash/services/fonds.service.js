@@ -136,17 +136,76 @@ async function debiterReserve(pf, montant, t) {
 }
 
 /**
+ * Ecrit le mouvement au grand livre, dans la transaction de l'appelant
+ * (section 30). Charge ici et non en tete : le grand livre passe par les
+ * modeles, qui n'ont pas a etre charges pour un simple calcul de solde.
+ */
+function livre() {
+    return require('./ledger.service').LedgerService;
+}
+
+/**
  * Deplace de l'argent d'un portefeuille a un autre. Les deux doivent etre
  * charges avec un verrou, dans `t`. Un meme portefeuille des deux cotes
  * est refuse : les deux mises a jour s'ecraseraient, et le montant serait
  * cree a partir de rien.
+ *
+ * `contexte` nomme le mouvement au grand livre : { type, reference,
+ * description, clientId, groupeTontineId, cycleTontineId }.
  */
-async function transferer(source, destination, montant, t) {
+async function transferer(source, destination, montant, t, contexte = {}) {
     if (source.id === destination.id) {
         throw new ErreurFonds(409, 'Un transfert vers le meme portefeuille est sans objet');
     }
     const m = await debiter(source, montant, t);
     await crediter(destination, m, t);
+    await livre().transfert(source, destination, m, { type: 'transfert', ...contexte }, t);
+    return m;
+}
+
+/**
+ * Mobilise une garantie : l'argent sort de la PART BLOQUEE d'un
+ * portefeuille vers un autre. Les deux gestes tenaient en deux appels
+ * separes ; au grand livre, chacun aurait alors semble venir de nulle
+ * part ou aller nulle part.
+ */
+async function transfererDepuisReserve(source, destination, montant, t, contexte = {}) {
+    if (source.id === destination.id) {
+        throw new ErreurFonds(409, 'Un transfert vers le meme portefeuille est sans objet');
+    }
+    const m = await debiterReserve(source, montant, t);
+    await crediter(destination, m, t);
+    await livre().transfert(source, destination, m, { type: 'garantie_mobilisation', ...contexte }, t);
+    return m;
+}
+
+/**
+ * De l'argent qui ENTRE dans MoneyTrack (recharge, restitution par
+ * l'operateur). La contrepartie est le compte du monde exterieur : la
+ * frontiere est ecrite, elle aussi.
+ */
+async function entree(pf, montant, t, contexte = {}) {
+    const m = await crediter(pf, montant, t);
+    await livre().mouvementExterne(pf, 'credit', m, { type: 'recharge', ...contexte }, t);
+    return m;
+}
+
+/** De l'argent qui SORT de MoneyTrack (retrait). */
+async function sortie(pf, montant, t, contexte = {}) {
+    const m = await debiter(pf, montant, t);
+    await livre().mouvementExterne(pf, 'debit', m, { type: 'retrait', ...contexte }, t);
+    return m;
+}
+
+/**
+ * Ajustement decide par l'administration (maker-checker). La contrepartie
+ * est un compte de systeme : un ajustement reste une ecriture, jamais une
+ * modification silencieuse d'un solde.
+ */
+async function ajuster(pf, sens, montant, t, contexte = {}) {
+    const m = sens === 'credit' ? await crediter(pf, montant, t) : await debiter(pf, montant, t);
+    const L = livre();
+    await L.mouvementExterne(pf, sens, m, { type: 'ajustement', ...contexte }, t, L.COMPTES.SYS_AJUSTEMENT);
     return m;
 }
 
@@ -162,5 +221,9 @@ module.exports = {
     reserver,
     liberer,
     debiterReserve,
-    transferer
+    transferer,
+    transfererDepuisReserve,
+    entree,
+    sortie,
+    ajuster
 };

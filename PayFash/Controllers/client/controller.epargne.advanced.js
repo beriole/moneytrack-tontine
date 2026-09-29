@@ -1,4 +1,5 @@
 const { db, Epargne, TransactionEpargne, EpargneAutomatique, Portefeuille, Transaction } = require('../../models');
+const { STATUTS } = require('../../services/statutTransaction');
 const Fonds = require('../../services/fonds.service');
 const { Op } = require('sequelize');
 
@@ -197,7 +198,7 @@ const deposerEpargne = async (req, res) => {
                         await Fonds.transferer(pfs[sourceId], pfs[cibleId], somme, t);
                     } catch (e) { throw traduire(e); }
                     await Transaction.create({
-                        montant: somme, date: new Date(), type: 'epargne_depot', statut: 'Succès', frais: 0,
+                        montant: somme, date: new Date(), type: 'epargne_depot', statut: STATUTS.SUCCESS, frais: 0,
                         description: `Mise de cote pour l'objectif « ${ep.objectif} »`,
                         ClientTransactionId: clientId
                     }, { transaction: t });
@@ -274,7 +275,7 @@ const retirerEpargne = async (req, res) => {
                         await Fonds.transferer(pfs[sourceId], pfs[cibleId], somme, t);
                     } catch (e) { throw traduire(e); }
                     await Transaction.create({
-                        montant: somme, date: new Date(), type: 'epargne_retrait', statut: 'Succès', frais: 0,
+                        montant: somme, date: new Date(), type: 'epargne_retrait', statut: STATUTS.SUCCESS, frais: 0,
                         description: `Retrait de l'objectif « ${ep.objectif} »`,
                         ClientTransactionId: clientId
                     }, { transaction: t });

@@ -56,6 +56,7 @@ const {
 } = tontine;
 const Restriction = require('./model.restriction');
 const EvaluationRisque = require('./model.evaluationRisque');
+const { LedgerCompte, LedgerMouvement, LedgerEcriture } = require('./model.ledger');
 
 // Alias pour les relations
 const Projet = projet;
@@ -207,6 +208,13 @@ Client.hasMany(Restriction, { foreignKey: 'clientId', as: 'restrictions' });
 Restriction.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
 Client.hasMany(EvaluationRisque, { foreignKey: 'clientId', as: 'evaluationsRisque' });
 
+// Grand livre : un compte par portefeuille, des ecritures par mouvement
+LedgerCompte.belongsTo(Portefeuille, { foreignKey: 'portefeuilleId', as: 'portefeuille' });
+LedgerMouvement.hasMany(LedgerEcriture, { foreignKey: 'mouvementId', as: 'ecritures', onDelete: 'CASCADE', hooks: true });
+LedgerEcriture.belongsTo(LedgerMouvement, { foreignKey: 'mouvementId', as: 'mouvement' });
+LedgerEcriture.belongsTo(LedgerCompte, { foreignKey: 'compteId', as: 'compte' });
+LedgerCompte.hasMany(LedgerEcriture, { foreignKey: 'compteId', as: 'ecritures' });
+
 module.exports = {
     Epargne,
     TransactionEpargne,
@@ -257,5 +265,8 @@ module.exports = {
     TontineEvaluationEligibilite,
     TontineIncidentDefaut,
     Restriction,
-    EvaluationRisque
+    EvaluationRisque,
+    LedgerCompte,
+    LedgerMouvement,
+    LedgerEcriture
 };

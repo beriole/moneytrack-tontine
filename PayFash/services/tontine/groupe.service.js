@@ -300,7 +300,10 @@ class GroupeService {
                 if (cautionRestituee > 0) {
                     const sequestre = await portefeuilleCaution(groupe, t, true);
                     const portefeuille = await portefeuilleClient(clientId, t, true);
-                    await transferer(sequestre, portefeuille, cautionRestituee, t);
+                    await transferer(sequestre, portefeuille, cautionRestituee, t, {
+                        type: 'caution_liberation', clientId, groupeTontineId: groupeId,
+                        description: `Caution rendue au depart — ${groupe.nom}`
+                    });
                     await ecrireTransaction({
                         montant: cautionRestituee,
                         type: 'caution_liberation',

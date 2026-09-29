@@ -98,7 +98,10 @@ class CycleService {
 
             const portefeuille = await portefeuilleClient(clientId, t, true);
             const caisse = await caisseGroupe(groupe, t, true);
-            await transferer(portefeuille, caisse, aVerser, t);
+            await transferer(portefeuille, caisse, aVerser, t, {
+                type: 'cotisation', clientId, groupeTontineId: groupe.id, cycleTontineId: cycle.id,
+                description: `Cotisation cycle ${cycle.numeroCycle} — ${groupe.nom}`
+            });
 
             // La reference inclut le deja-paye : un double clic reenvoie la
             // meme reference et heurte la contrainte d'unicite, tandis qu'un
@@ -374,12 +377,18 @@ class CycleService {
             const destinationChoisie = await IntegrationService.destinationTour(cycle.beneficiaireId, groupe.id, t);
             const portefeuilleBeneficiaire = destinationChoisie
                 || await portefeuilleClient(cycle.beneficiaireId, t, true);
-            await transferer(caisse, portefeuilleBeneficiaire, net, t);
+            await transferer(caisse, portefeuilleBeneficiaire, net, t, {
+                type: 'versement', clientId: cycle.beneficiaireId, groupeTontineId: groupe.id,
+                cycleTontineId: cycle.id, description: `Versement du pot — cycle ${cycle.numeroCycle} de ${groupe.nom}`
+            });
 
             for (const c of cotisants) {
                 if (partDecote <= 0) break;
                 const pf = await portefeuilleClient(c.clientId, t, true);
-                await transferer(caisse, pf, partDecote, t);
+                await transferer(caisse, pf, partDecote, t, {
+                    type: 'decote_enchere', clientId: c.clientId, groupeTontineId: groupe.id,
+                    cycleTontineId: cycle.id, description: `Part de decote — cycle ${cycle.numeroCycle}`
+                });
                 await this._ecrireOuRejeter({
                     montant: partDecote,
                     type: 'decote_enchere',
@@ -404,7 +413,10 @@ class CycleService {
             }, t);
 
             if (frais > 0 && portefeuillePlateforme) {
-                await transferer(caisse, portefeuillePlateforme, frais, t);
+                await transferer(caisse, portefeuillePlateforme, frais, t, {
+                    type: 'frais_plateforme', groupeTontineId: groupe.id, cycleTontineId: cycle.id,
+                    description: `Frais de plateforme — cycle ${cycle.numeroCycle} de ${groupe.nom}`
+                });
                 await this._ecrireOuRejeter({
                     montant: frais,
                     type: 'frais_plateforme',

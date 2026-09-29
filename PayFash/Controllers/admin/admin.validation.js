@@ -1,6 +1,7 @@
 // Maker-Checker : les opérations financières sensibles sont créées par un admin (maker)
 // puis exécutées seulement après approbation par un AUTRE admin (checker).
 const { db, PendingAction, Transaction, Portefeuille } = require('../../models/index');
+const { STATUTS, changer: changerStatut } = require('../../services/statutTransaction');
 const { logAction } = require('./audit');
 const Fonds = require('../../services/fonds.service');
 
@@ -26,7 +27,7 @@ async function executeRefund(payload) {
     return db.transaction(async (t) => {
         const tx = await Transaction.findByPk(payload.transactionId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!tx) throw new Error('Transaction introuvable');
-        if (tx.statut === 'remboursée') throw new Error('Transaction déjà remboursée');
+        if (tx.statut === STATUTS.REVERSED) throw new Error('Transaction déjà remboursée');
         if (tx.groupeTontineId || TYPES_NON_REMBOURSABLES.includes(tx.type)) {
             throw new Error(`Une ecriture de tontine ne se rembourse pas par cette voie (type "${tx.type}")`);
         }
@@ -38,13 +39,17 @@ async function executeRefund(payload) {
         if (!wallet) wallet = await Portefeuille.findOne({ where: { ...base, typePortefeuille: 'courant' }, ...verrou });
         if (!wallet) throw new Error('Portefeuille introuvable');
 
-        await wallet.update({ solde: wallet.solde + tx.montant }, { transaction: t });
+        await Fonds.ajuster(wallet, 'credit', tx.montant, t, {
+            type: 'remboursement', clientId: wallet.ClientPortefeuilleId,
+            transactionId: tx.id, description: `Remboursement de l'ecriture #${tx.id}`
+        });
         await Transaction.create({
-            montant: tx.montant, date: new Date(), type: 'remboursement', statut: 'Succès',
+            montant: tx.montant, date: new Date(), type: 'remboursement', statut: STATUTS.SUCCESS,
             description: `Remboursement (validé) de la transaction #${tx.id}`, frais: 0,
             ClientTransactionId: tx.ClientTransactionId
         }, { transaction: t });
-        await tx.update({ statut: 'remboursée' }, { transaction: t });
+        // L'ecriture d'origine reste : elle est compensee, pas effacee.
+        await changerStatut(tx, STATUTS.REVERSED, { transaction: t });
 
         return { nouveauSolde: wallet.solde };
     });
@@ -76,10 +81,12 @@ async function executeAdjust(payload) {
                 : 'Solde insuffisant');
         }
 
-        await wallet.update({ solde: wallet.solde + (sens === 'credit' ? valeur : -valeur) }, { transaction: t });
+        await Fonds.ajuster(wallet, sens === 'credit' ? 'credit' : 'debit', valeur, t, {
+            clientId: wallet.ClientPortefeuilleId, description: `Ajustement : ${motif || 'n/c'}`
+        });
         await Transaction.create({
             montant: valeur, date: new Date(), type: sens === 'credit' ? 'ajustement_credit' : 'ajustement_debit',
-            statut: 'Succès', description: `Ajustement validé : ${motif || 'n/c'}`, frais: 0,
+            statut: STATUTS.SUCCESS, description: `Ajustement validé : ${motif || 'n/c'}`, frais: 0,
             ClientTransactionId: wallet.ClientPortefeuilleId
         }, { transaction: t });
 

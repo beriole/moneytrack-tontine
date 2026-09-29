@@ -1,4 +1,5 @@
 const { Portefeuille, Transaction } = require('../../models');
+const { STATUTS } = require('../../services/statutTransaction');
 const { Op } = require('sequelize');
 const Fonds = require('../../services/fonds.service');
 
@@ -122,7 +123,10 @@ const transfer = async (req, res) => {
       // meme pour toutes les sorties. Un transfert ne doit pas pouvoir
       // vider un portefeuille epargne de sa part bloquee en garantie.
       try {
-        await Fonds.transferer(fromPortefeuille, toPortefeuille, montant, t);
+        await Fonds.transferer(fromPortefeuille, toPortefeuille, montant, t, {
+            type: 'transfert', clientId: fromPortefeuille.ClientPortefeuilleId,
+            description: `Transfert ${fromPortefeuille.nom || ''} vers ${toPortefeuille.nom || ''}`.trim()
+        });
       } catch (e) {
         if (e instanceof Fonds.ErreurFonds) {
           throw Object.assign(new Error(e.message), { statut: e.code, ...e.details });
@@ -135,7 +139,7 @@ const transfer = async (req, res) => {
             type: 'transfert_sortant', 
             montant, 
             date: new Date(),
-            statut: 'Succès',
+            statut: STATUTS.SUCCESS,
             description: `Transfert de ${montant} vers "${toPortefeuille.nom || toPortefeuille.typePortefeuille}"`,
             ClientTransactionId: clientId 
         },
@@ -143,7 +147,7 @@ const transfer = async (req, res) => {
             type: 'transfert_entrant', 
             montant, 
             date: new Date(),
-            statut: 'Succès',
+            statut: STATUTS.SUCCESS,
             description: `Transfert de ${montant} depuis "${fromPortefeuille.nom || fromPortefeuille.typePortefeuille}"`,
             ClientTransactionId: clientId 
         }

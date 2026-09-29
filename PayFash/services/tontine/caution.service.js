@@ -58,7 +58,10 @@ class CautionService {
 
             const portefeuille = await portefeuilleClient(clientId, t, true);
             const sequestre = await portefeuilleCaution(groupe, t, true);
-            await transferer(portefeuille, sequestre, aBloquer, t);
+            await transferer(portefeuille, sequestre, aBloquer, t, {
+                type: 'caution_blocage', clientId, groupeTontineId: groupeId,
+                description: `Caution bloquee — ${groupe.nom}`
+            });
 
             let caution = await TontineCaution.findOne({
                 where: { groupeId, clientId }, transaction: t, lock: t.LOCK.UPDATE
@@ -147,7 +150,10 @@ class CautionService {
         if (saisi <= 0) return 0;
 
         const sequestre = await portefeuilleCaution(groupe, t, true);
-        await transferer(sequestre, destination, saisi, t);
+        await transferer(sequestre, destination, saisi, t, {
+            type: 'caution_saisie', clientId: cotisation.clientId, groupeTontineId: groupe.id,
+            cycleTontineId: cycle.id, description: `Caution saisie — cycle ${cycle.numeroCycle} de ${groupe.nom}`
+        });
 
         await ecrireTransaction({
             montant: saisi,
@@ -239,7 +245,10 @@ class CautionService {
             if (aRendre > 0) {
                 const sequestre = await portefeuilleCaution(groupe, t, true);
                 const portefeuille = await portefeuilleClient(caution.clientId, t, true);
-                await transferer(sequestre, portefeuille, aRendre, t);
+                await transferer(sequestre, portefeuille, aRendre, t, {
+                    type: 'caution_liberation', clientId: caution.clientId, groupeTontineId: groupe.id,
+                    description: `Caution restituee — ${groupe.nom}`
+                });
 
                 transaction = await ecrireTransaction({
                     montant: aRendre,

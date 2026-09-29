@@ -356,7 +356,10 @@ class DefautService {
 
             const destination = await this.creancier(cycle, groupe, t);
             const portefeuille = await portefeuilleClient(clientId, t, true);
-            await transferer(portefeuille, destination.portefeuille, aVerser, t);
+            await transferer(portefeuille, destination.portefeuille, aVerser, t, {
+                type: 'regularisation', clientId, groupeTontineId: groupe.id, cycleTontineId: cycle.id,
+                description: `Regularisation — cycle ${cycle.numeroCycle} de ${groupe.nom}`
+            });
 
             const ecriture = await ecrireTransaction({
                 montant: aVerser,
@@ -428,7 +431,10 @@ class DefautService {
             const m = Math.min(dispo, arrondir(nombre(c.montantDu) - nombre(c.montantPaye)));
             if (m <= 0) continue;
 
-            await transferer(caisse, destination.portefeuille, m, t);
+            await transferer(caisse, destination.portefeuille, m, t, {
+                type: 'retenue_pot', clientId: c.clientId, groupeTontineId: groupe.id,
+                cycleTontineId: cycleDette.id, description: `Retenue sur le pot — ${groupe.nom}`
+            });
             await ecrireTransaction({
                 montant: m,
                 type: 'retenue_pot',
