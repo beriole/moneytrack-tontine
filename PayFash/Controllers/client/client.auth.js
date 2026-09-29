@@ -333,29 +333,16 @@ const verifyOtp= async (req,res)=>{
         console.log(error);
     }
 }
+// POST /auth/litige  { description, objetType?, objetId? }
+// Conservee pour les applications deja installees ; le traitement vit dans
+// services/litige.service.js, comme POST /tontine/litiges.
 const litige= async (req,res)=>{
     try {
-        const { description } = req.body;
-
-        // Le litige appartient au porteur du jeton. Il lisait auparavant
-        // `utilisateurId` dans le corps de la requete — donc ouvrable au nom
-        // de n'importe qui — et interrogeait `Utilisateur`, un modele qui
-        // n'existe pas : la route echouait de toute facon systematiquement.
-        const utilisateurId = req.user.id;
-        if (!description || !String(description).trim()) {
-            return res.status(400).json({ erreur: "La description du litige est obligatoire" });
-        }
-
-        const litige = await Litige.create({
-            description:description,
-            statut: "en attente",
-            dateSoummission: new Date(),
-            UtilisateurId: utilisateurId,
-            clientId:utilisateurId
-        });
-
-        return res.status(201).json({ succes: "Litige ajouté avec succès", litige });
+        const { LitigeService } = require('../../services/litige.service');
+        const litige = await LitigeService.ouvrir(req.user.id, req.body || {});
+        return res.status(201).json({ succes: "Litige ajouté avec succès", litige: LitigeService.vue(litige) });
     } catch (error) {
+        if (error && error.name === 'ErreurTontine') return res.status(error.code).json({ erreur: error.message, error: error.message });
         console.error(error);
         return res.status(500).json({ erreur: "Erreur serveur lors de l'ajout du litige" });
     }

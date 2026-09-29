@@ -1,5 +1,6 @@
+const { Op } = require('sequelize');
 const { Client, Litige } = require('../../models/index');
-const { logAction } = require('./audit');
+const { LitigeService, OUVERTS } = require('../../services/litige.service');
 
 // GET /api/admin/litige/litige?page&limit&statut
 const listeLitiges = async (req, res) => {
@@ -8,7 +9,10 @@ const listeLitiges = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const offset = (page - 1) * limit;
         const where = {};
-        if (req.query.statut) where.statut = req.query.statut;
+        // « ouvert » regroupe les litiges en attente et en cours : le filtre
+        // cherchait la valeur 'ouvert', qu'aucun litige ne porte.
+        if (req.query.statut === 'ouvert') where.statut = { [Op.in]: OUVERTS };
+        else if (req.query.statut) where.statut = req.query.statut;
 
         const { rows, count } = await Litige.findAndCountAll({
             where,
@@ -33,24 +37,22 @@ const detailsLitige = async (req, res) => {
             include: [{ model: Client, attributes: ['id', 'nom', 'email', 'telephone'] }]
         });
         if (!litige) return res.status(404).json({ success: false, error: 'Litige introuvable' });
-        return res.json({ success: true, data: litige });
+        // L'instantane des preuves est-il celui pris a l'ouverture ?
+        return res.json({ success: true, data: { ...litige.toJSON(), preuvesIntactes: LitigeService.verifierPreuves(litige) } });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// PATCH /api/admin/litige/litige/:id/resoudre   body: { statut }
+// PATCH /api/admin/litige/litige/:id/resoudre   body: { statut, reponse }
+// statut : 'en cours' (pris en charge), 'résolu' ou 'rejeté' — ces deux
+// derniers exigent une reponse, envoyee au client.
 const resoudreLitige = async (req, res) => {
     try {
-        const litige = await Litige.findByPk(req.params.id);
-        if (!litige) return res.status(404).json({ success: false, error: 'Litige introuvable' });
-
-        litige.statut = req.body?.statut || 'résolu';
-        litige.dateResolution = new Date();
-        await litige.save();
-        await logAction(req, 'LITIGE_RESOLVE', `Litige#${litige.id}`, { statut: litige.statut });
-        return res.json({ success: true, message: 'Litige mis à jour', data: litige });
+        const l = await LitigeService.trancher(req.admin, req.params.id, req.body || {}, req);
+        return res.json({ success: true, message: 'Litige mis à jour', data: l });
     } catch (error) {
+        if (error && error.name === 'ErreurTontine') return res.status(error.code).json({ success: false, error: error.message });
         console.error('resoudreLitige:', error);
         return res.status(500).json({ success: false, error: error.message });
     }

@@ -176,7 +176,38 @@ const regulariser = async (req, res) => {
     } catch (e) { return repondreErreur(res, e); }
 };
 
+// --- Litiges ------------------------------------------------------------
+
+// GET /tontine/litiges/objets — ce qui peut etre conteste
+const objetsLitige = async (req, res) => {
+    const { LitigeService } = require('../../services/litige.service');
+    return res.status(200).json({ objets: LitigeService.objets() });
+};
+
+// GET /tontine/litiges/mes-litiges
+const mesLitiges = async (req, res) => {
+    try {
+        const { LitigeService } = require('../../services/litige.service');
+        return res.status(200).json({ litiges: await LitigeService.mesLitiges(req.user.id) });
+    } catch (e) { return repondreErreur(res, e); }
+};
+
+// POST /tontine/litiges   { objetType, objetId, description }
+const ouvrirLitige = async (req, res) => {
+    try {
+        const { LitigeService } = require('../../services/litige.service');
+        const l = await LitigeService.ouvrir(req.user.id, req.body || {});
+        return res.status(201).json({
+            message: l.objetType
+                ? `Litige n°${l.id} ouvert. Les pieces de l'operation ont ete conservees ; vous serez prevenu de la reponse.`
+                : `Signalement n°${l.id} enregistre. Vous serez prevenu de la reponse.`,
+            litige: LitigeService.vue(l)
+        });
+    } catch (e) { return repondreErreur(res, e); }
+};
+
 module.exports = {
+    objetsLitige, mesLitiges, ouvrirLitige,
     mesIncidents, incidentsGroupe, politiqueRecouvrement, regulariser,
     bloquerCaution, mesCautions, cautionsGroupe, libererCaution,
     infligerAmende, mesAmendes, amendesGroupe, payerAmende, annulerAmende,

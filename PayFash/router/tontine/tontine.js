@@ -62,6 +62,11 @@ route.post("/groupes/:groupeId/exclure", verifyToken, DISC.exclure);
 route.get("/cotisations/:cotisationId/recouvrement", verifyToken, DISC.etatRecouvrement);
 route.post("/cotisations/:cotisationId/saisir-caution", verifyToken, DISC.saisirCaution);
 
+// --- Litiges : contester une operation, preuves conservees -----------
+route.get("/litiges/objets", verifyToken, DISC.objetsLitige);
+route.get("/litiges/mes-litiges", verifyToken, DISC.mesLitiges);
+route.post("/litiges", verifyToken, DISC.ouvrirLitige);
+
 // --- Defauts : politique de recouvrement, incidents, regularisation ---
 route.get("/incidents/mes-incidents", verifyToken, DISC.mesIncidents);
 route.get("/groupes/:groupeId/incidents", verifyToken, DISC.incidentsGroupe);
