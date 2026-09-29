@@ -2,6 +2,28 @@ import { View, Text, StyleSheet } from 'react-native';
 import React from 'react';
 import { FontAwesome as Icon } from '@expo/vector-icons';
 
+// Statuts d'ecriture du serveur (section 31). L'ecran comparait a
+// « terminé » et « en cours », des valeurs qui n'existent pas : toute
+// transaction s'affichait donc comme un echec.
+// Vers les styles definis plus bas : success, pending, failed.
+const CLE_STATUT = {
+  PENDING: 'pending',
+  PROCESSING: 'pending',
+  SUCCESS: 'success',
+  FAILED: 'failed',
+  REVERSED: 'failed',
+  CANCELLED: 'failed',
+};
+
+const LIBELLE_STATUT = {
+  PENDING: 'En attente',
+  PROCESSING: 'En cours',
+  SUCCESS: 'Reussie',
+  FAILED: 'Echouee',
+  REVERSED: 'Remboursee',
+  CANCELLED: 'Annulee',
+};
+
 export default function TransactionCard({ transaction }) {
 
 
@@ -34,8 +56,8 @@ export default function TransactionCard({ transaction }) {
         <Text style={[styles.amount, {color: amountColor}]}>
           {transaction.type === 'dépense' ? '-' : '+'}{transaction.montant} FCFA
         </Text>
-        <Text style={[styles.status, transaction.statut === 'terminé' ? styles.success : transaction.statut === 'en cours' ? styles.pending : styles.failed]}>
-          {transaction.statut}
+        <Text style={[styles.status, styles[CLE_STATUT[transaction.statut] || 'pending']]}>
+          {LIBELLE_STATUT[transaction.statut] || transaction.statut}
         </Text>
       </View>
     </View>

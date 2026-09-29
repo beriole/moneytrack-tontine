@@ -2,7 +2,7 @@ const {DataTypes}=require('sequelize');
 const bd=require('../config/bd');
 const transaction=bd.define("transaction",{
     montant:{
-        type:DataTypes.FLOAT,
+        type:DataTypes.DECIMAL(15, 2),
         allowNull:false,
     },
     date:{
@@ -15,17 +15,19 @@ const transaction=bd.define("transaction",{
         defaultValue:"recharge"
     },
 
+    // Six etats fixes, definis dans services/statutTransaction.js : c'etait
+    // du texte libre, ou chaque appelant ecrivait sa propre formule.
     statut:{
-        type:DataTypes.STRING,
+        type:DataTypes.ENUM('PENDING','PROCESSING','SUCCESS','FAILED','REVERSED','CANCELLED'),
         allowNull:false,
-        defaultValue:"En confirmation"
+        defaultValue:'PENDING'
     },
     description:{
         type:DataTypes.TEXT,
         allowNull:true
     },
     frais:{
-        type:DataTypes.FLOAT,
+        type:DataTypes.DECIMAL(15, 2),
         allowNull:false,
         defaultValue:0
         // Le defaut etait de 100,3 FCFA : toute ecriture creee sans preciser

@@ -2,6 +2,7 @@
 
 const { Portefeuille, Transaction } = require('../../models');
 const Fonds = require('../fonds.service');
+const { STATUTS } = require('../statutTransaction');
 
 // =====================================================================
 //  Briques partagees par les services tontine.
@@ -188,7 +189,7 @@ async function ecrireTransaction(donnees, t) {
         montant: arrondir(donnees.montant),
         date: new Date(),
         type: donnees.type,
-        statut: 'Succès',
+        statut: STATUTS.SUCCESS,
         description: donnees.description,
         frais: 0,
         ClientTransactionId: donnees.clientId,
@@ -203,7 +204,7 @@ async function ecrireTransaction(donnees, t) {
  * transaction SQL du caller. Les deux portefeuilles doivent avoir ete
  * charges avec un verrou.
  */
-async function transferer(source, destination, montant, t) {
+async function transferer(source, destination, montant, t, contexte = {}) {
     // La regle du disponible vit dans services/fonds.service.js, commune a
     // toutes les sorties d'argent du projet. Ce transfert comparait le
     // montant au solde brut : une fois des fonds bloques en garantie, une
@@ -212,7 +213,7 @@ async function transferer(source, destination, montant, t) {
     // L'erreur est retraduite en ErreurTontine pour que les controleurs du
     // module, qui ne connaissent qu'elle, gardent le bon code HTTP.
     try {
-        return await Fonds.transferer(source, destination, montant, t);
+        return await Fonds.transferer(source, destination, montant, t, contexte);
     } catch (e) {
         if (e instanceof Fonds.ErreurFonds) throw new ErreurTontine(e.code, e.message);
         throw e;

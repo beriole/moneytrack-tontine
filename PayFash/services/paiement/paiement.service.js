@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { STATUTS, depuisFournisseur } = require('../statutTransaction');
 const { Op } = require('sequelize');
 const { db, Client, Portefeuille, Transaction, Paiement } = require('../../models');
 const ENV = require('../../config/index');
@@ -239,14 +240,25 @@ class PaiementService {
 
         if (!etat.termine) {
             await paiement.update({ status: etat.statut, donnees: etat.brut });
+            await this._alignerEcriture(paiement, etat.statut);
             return { reference, statut: etat.statut, creedite: false, enAttente: true };
         }
 
         if (!etat.reussi) {
+            const motif = etat.statut === 'EXPIRED' ? 'Paiement expire' : 'Paiement refuse';
             await paiement.update({
-                status: etat.statut, donnees: etat.brut, dateConfirmation: new Date(),
-                motif: etat.statut === 'EXPIRED' ? 'Paiement expire' : 'Paiement refuse'
+                status: etat.statut, donnees: etat.brut, dateConfirmation: new Date(), motif
             });
+            // Un versement sortant refuse APRES coup : les fonds avaient ete
+            // debites a la demande. Sans ce retour, le client restait debite
+            // d'un versement qui n'est jamais parti, et son ecriture restait
+            // « en attente » pour toujours — seul un echec immediat, a
+            // l'appel, declenchait la restitution.
+            if (paiement.sens === 'sortant' && paiement.status !== 'REFUNDED') {
+                await this._rembourser(paiement, `${motif} : fonds restitues`);
+                return { reference, statut: etat.statut, creedite: false, rembourse: true };
+            }
+            await this._alignerEcriture(paiement, etat.statut);
             return { reference, statut: etat.statut, creedite: false };
         }
 
@@ -280,7 +292,10 @@ class PaiementService {
             const commission = taux > 0 ? Math.floor(brut * taux) : 0;
             const somme = arrondir(brut - commission);
 
-            await portefeuille.update({ solde: arrondir(nombre(portefeuille.solde) + somme) }, { transaction: t });
+            await Fonds.entree(portefeuille, somme, t, {
+                type: 'recharge', reference: `LEDGER-${frais.reference}`, clientId: frais.user_id,
+                description: `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference}`
+            });
 
             // La reference unique est la seconde barriere : meme si le
             // verrou etait contourne, la base refuserait ce doublon.
@@ -288,7 +303,7 @@ class PaiementService {
                 montant: somme,
                 date: new Date(),
                 type: 'recharge',
-                statut: 'Succès',
+                statut: STATUTS.SUCCESS,
                 description: commission > 0
                     ? `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference} (${brut} moins ${commission} de frais)`
                     : `Recharge ${etat.medium || 'Mobile Money'} — ${frais.reference}`,
@@ -372,7 +387,10 @@ class PaiementService {
                     + `des 30 prochains jours ; les retirer vous exposerait a une amende. `
                     + `Renvoyez la demande avec accepterRisque: true pour passer outre.`);
             }
-            await pf.update({ solde: arrondir(nombre(pf.solde) - somme) }, { transaction: t });
+            await Fonds.sortie(pf, somme, t, {
+                type: 'retrait', reference: `LEDGER-${reference}`, clientId,
+                description: `Retrait vers ${numero} — ${reference}`
+            });
 
             const p = await Paiement.create({
                 type: 'retrait', montant: somme, date: new Date(), status: 'PENDING',
@@ -382,7 +400,7 @@ class PaiementService {
             }, { transaction: t });
 
             await Transaction.create({
-                montant: somme, date: new Date(), type: 'retrait', statut: 'En confirmation',
+                montant: somme, date: new Date(), type: 'retrait', statut: STATUTS.PENDING,
                 description: `Retrait vers ${numero} — ${reference}`, frais: 0,
                 ClientTransactionId: clientId, reference
             }, { transaction: t });
@@ -449,9 +467,12 @@ class PaiementService {
             status: 'A_VERIFIER',
             motif: `Issue inconnue, a verifier aupres de Fapshi : ${motif}`
         });
+        // L'ecriture est prise en charge, son issue n'est pas connue : c'est
+        // PROCESSING. Le « a verifier » reste porte par le paiement, avec
+        // son motif — l'ecriture, elle, n'a que six etats possibles.
         await Transaction.update(
-            { statut: 'A verifier' },
-            { where: { reference: paiement.reference } }
+            { statut: STATUTS.PROCESSING },
+            { where: { reference: paiement.reference, statut: { [Op.in]: [STATUTS.PENDING, STATUTS.PROCESSING] } } }
         );
     }
 
@@ -464,6 +485,27 @@ class PaiementService {
         });
     }
 
+    /**
+     * Aligne l'ecriture interne sur le statut du fournisseur (section 31) :
+     * un paiement externe et son ecriture ne doivent jamais raconter deux
+     * histoires differentes. Silencieuse si le passage n'a pas de sens.
+     */
+    static async _alignerEcriture(paiement, statutFournisseur, t = null) {
+        const vise = depuisFournisseur(statutFournisseur);
+        if (!vise) return null;
+        const ecriture = await Transaction.findOne({
+            where: { reference: paiement.reference }, ...(t ? { transaction: t } : {})
+        });
+        if (!ecriture || ecriture.statut === vise) return null;
+        const { peutPasser, changer } = require('../statutTransaction');
+        if (!peutPasser(ecriture.statut, vise)) {
+            console.log(`[paiement] ecriture ${paiement.reference} : ${ecriture.statut} -> ${vise} refuse`);
+            return null;
+        }
+        await changer(ecriture, vise, t ? { transaction: t } : {});
+        return ecriture;
+    }
+
     static async _rembourser(paiement, motif) {
         return db.transaction(async (t) => {
             const frais = await Paiement.findByPk(paiement.id, { transaction: t, lock: t.LOCK.UPDATE });
@@ -471,11 +513,21 @@ class PaiementService {
 
             const pf = await Portefeuille.findByPk(frais.portefeuilleId, { transaction: t, lock: t.LOCK.UPDATE });
             if (pf) {
-                await pf.update({ solde: arrondir(nombre(pf.solde) + nombre(frais.montant)) }, { transaction: t });
+                await Fonds.entree(pf, nombre(frais.montant), t, {
+                    type: 'remboursement', reference: `LEDGER-REMB-${frais.reference}`, clientId: frais.user_id,
+                    description: motif
+                });
             }
+            // Recharge remboursee avant d'avoir abouti : l'ecriture n'a
+            // jamais rien deplace, elle est annulee, pas compensee.
+            // Seules les ecritures encore en suspens sont annulees : une
+            // ecriture deja confirmee se compense, elle ne s'efface pas.
             await Transaction.update(
-                { statut: 'Annulée', description: motif },
-                { where: { reference: frais.reference }, transaction: t }
+                { statut: STATUTS.CANCELLED, description: motif },
+                {
+                    where: { reference: frais.reference, statut: { [Op.in]: [STATUTS.PENDING, STATUTS.PROCESSING] } },
+                    transaction: t
+                }
             );
             await frais.update({ status: 'REFUNDED', motif }, { transaction: t });
         });
@@ -483,7 +535,7 @@ class PaiementService {
 
     static async _finaliserRetrait(paiement, etat) {
         await Transaction.update(
-            { statut: 'Succès' },
+            { statut: STATUTS.SUCCESS },
             { where: { reference: paiement.reference } }
         );
         await paiement.update({

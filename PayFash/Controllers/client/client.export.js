@@ -1,4 +1,5 @@
 const { Portefeuille, Transaction, Client } = require('../../models');
+const { LIBELLES } = require('../../services/statutTransaction');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
@@ -102,7 +103,7 @@ const exportTransactionsExcel = async (req, res) => {
                 devise: tx.devise || 'XAF',
                 categorie: categorieIA,
                 description: tx.description || '',
-                statut: tx.statut || 'Succès',
+                statut: LIBELLES[tx.statut] || tx.statut || '—',
                 frais: tx.frais || 0,
                 portefeuille: tx.Portefeuille ? (tx.Portefeuille.nom || tx.Portefeuille.typePortefeuille) : 'N/A'
             });

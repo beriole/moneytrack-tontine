@@ -283,7 +283,7 @@ async function doitEchouer(libelle, code, fn) {
         });
         referencesCreees.push(sortant.reference);
         await Transaction.create({
-            montant: MONTANT, date: new Date(), type: 'retrait', statut: 'En confirmation',
+            montant: MONTANT, date: new Date(), type: 'retrait', statut: 'PENDING',
             description: 'Recette — versement simule', frais: 0,
             ClientTransactionId: client.id, reference: sortant.reference
         });
@@ -298,11 +298,53 @@ async function doitEchouer(libelle, code, fn) {
         FapshiService.statut = vraiStatut2;
 
         verifier('un versement confirme est marque abouti', fin.statut === 'SUCCESSFUL' && fin.retrait === true);
-        verifier("l'ecriture passe de « En confirmation » a « Succès »",
-            (await Transaction.findOne({ where: { reference: sortant.reference } })).statut === 'Succès');
+        verifier("l'ecriture passe de PENDING a SUCCESS",
+            (await Transaction.findOne({ where: { reference: sortant.reference } })).statut === 'SUCCESS');
         verifier('un versement ne RECREDITE jamais le portefeuille',
             arrondir((await Portefeuille.findByPk(pf.id)).solde) === soldeAvantVersement,
             'les fonds avaient deja ete reserves a la demande');
+
+        // =============================================================
+        //  Un versement refuse APRES coup. Les fonds avaient ete debites a
+        //  la demande : sans retour, le client restait debite d'un
+        //  versement jamais parti, et son ecriture restait « en attente »
+        //  pour toujours. Seul un echec immediat declenchait la
+        //  restitution.
+        // =============================================================
+        titre('11 bis. Un versement refuse apres coup rend les fonds');
+        const refuse = await Paiement.create({
+            type: 'retrait', montant: MONTANT, date: new Date(), status: 'PENDING',
+            motif: 'Recette — versement refuse', reference: 'RET-KO-' + Date.now(),
+            fournisseur: 'fapshi', sens: 'sortant', providerTxId: 'SIMULE-REFUSE',
+            portefeuilleId: pf.id, user_id: client.id
+        });
+        referencesCreees.push(refuse.reference);
+        await Transaction.create({
+            montant: MONTANT, date: new Date(), type: 'retrait', statut: 'PENDING',
+            description: 'Recette — versement refuse', frais: 0,
+            ClientTransactionId: client.id, reference: refuse.reference
+        });
+        // Les fonds sont deja sortis du portefeuille, comme a la demande.
+        const pfAvantRefus = await Portefeuille.findByPk(pf.id);
+        await pfAvantRefus.update({ solde: arrondir(pfAvantRefus.solde) - MONTANT });
+        const soldeDebite = arrondir((await Portefeuille.findByPk(pf.id)).solde);
+
+        const vraiStatut3 = FapshiService.statut;
+        FapshiService.statut = async () => ({
+            reussi: false, termine: true, statut: 'FAILED',
+            montant: MONTANT, medium: 'mobile money', brut: { simule: true }
+        });
+        const issue = await PaiementService.confirmer(refuse.reference);
+        FapshiService.statut = vraiStatut3;
+
+        verifier('le refus est constate et les fonds restitues',
+            issue.creedite === false && issue.rembourse === true, JSON.stringify(issue));
+        verifier('le solde revient a son niveau',
+            arrondir((await Portefeuille.findByPk(pf.id)).solde) === soldeDebite + MONTANT);
+        verifier("l'ecriture ne reste pas en attente : elle est annulee",
+            (await Transaction.findOne({ where: { reference: refuse.reference } })).statut === 'CANCELLED');
+        verifier('le paiement est marque rembourse',
+            (await Paiement.findByPk(refuse.id)).status === 'REFUNDED');
 
         titre('12. Reconciliation des paiements orphelins');
         const rec = await PaiementService.reconcilier();

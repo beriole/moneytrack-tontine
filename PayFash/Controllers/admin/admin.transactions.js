@@ -1,4 +1,5 @@
 const { fn, col, Op } = require('sequelize');
+const { STATUTS } = require('../../services/statutTransaction');
 const { Transaction, Paiement, Client, Portefeuille } = require('../../models/index');
 const { ouvrirDemande } = require('./admin.validation');
 
@@ -129,7 +130,7 @@ const rembourser = async (req, res) => {
     try {
         const tx = await Transaction.findByPk(req.params.id);
         if (!tx) return res.status(404).json({ success: false, error: 'Transaction introuvable' });
-        if (tx.statut === 'remboursée') {
+        if (tx.statut === STATUTS.REVERSED) {
             return res.status(400).json({ success: false, error: 'Transaction déjà remboursée' });
         }
 
