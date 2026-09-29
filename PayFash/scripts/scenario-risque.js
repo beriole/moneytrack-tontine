@@ -144,7 +144,7 @@ const facteur = (r, code) => r.facteurs.find(f => f.code === code);
         titre('4. Forte depense avant une echeance');
         const ecrire = async (type, montant, joursAvant) => {
             const e = await Transaction.create({
-                montant, type, statut: 'Succès', description: 'scenario risque', frais: 0,
+                montant, type, statut: 'SUCCESS', description: 'scenario risque', frais: 0,
                 date: new Date(Date.now() - joursAvant * JOUR), ClientTransactionId: D.id
             });
             ecrituresCreees.push(e.id);

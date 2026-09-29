@@ -93,9 +93,24 @@ async function creer() {
                 },
                 transaction: t
             });
+            // Une inscription reelle ouvre TROIS portefeuilles (courant,
+            // epargne, projet). Le jeu de demonstration n'en creait qu'un :
+            // un depot sur un objectif d'epargne echouait donc, faute de
+            // portefeuille pour recevoir l'argent.
+            for (const [type, nom] of [['epargne', 'Compte epargne'], ['projet', 'Compte projet']]) {
+                await Portefeuille.findOrCreate({
+                    where: { ClientPortefeuilleId: c.id, typePortefeuille: type },
+                    defaults: {
+                        nom, solde: 0, devise: 'XAF', typePortefeuille: type,
+                        estPrincipal: false, estActif: true, ClientPortefeuilleId: c.id
+                    },
+                    transaction: t
+                });
+            }
+
             console.log((nouveau ? 'cree   ' : 'existe ') + ' ' + d.nom.padEnd(18) +
                 ' id=' + String(c.id).padEnd(4) + ' portefeuille=' + pf.id +
-                ' solde=' + pf.solde + (nouveauW ? '' : ' (existant)'));
+                ' solde=' + pf.solde + (nouveauW ? '' : ' (existant)') + ' (+ epargne, projet)');
         }
 
         // --- Groupe de tontine -------------------------------------

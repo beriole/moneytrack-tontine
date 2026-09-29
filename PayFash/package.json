@@ -4,11 +4,12 @@
   "main": "servers.js",
   "scripts": {
     "start": "nodemon servers.js",
-    "verifier": "node scripts/verifier-tontine.js",
+    "verifier": "node scripts/verifier-tontine.js && node scripts/verifier-montants.js && node scripts/verifier-ledger.js",
     "seed:tontine": "node scripts/seed-tontine-demo.js",
     "test": "npm run test:unitaires && npm run verifier && npm run test:scenarios",
     "test:unitaires": "node --test tests/",
-    "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js && node scripts/scenario-garanties.js && node scripts/scenario-couverture.js && node scripts/scenario-eligibilite.js && node scripts/scenario-defauts.js && node scripts/scenario-liberation.js && node scripts/scenario-risque.js && node scripts/scenario-admin-http.js",
+    "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js && node scripts/scenario-garanties.js && node scripts/scenario-couverture.js && node scripts/scenario-eligibilite.js && node scripts/scenario-defauts.js && node scripts/scenario-liberation.js && node scripts/scenario-risque.js && node scripts/scenario-admin-http.js && node scripts/scenario-litiges.js && node scripts/scenario-ledger.js",
+    "repetition": "node scripts/scenario-demo.js",
     "test:paiement": "node scripts/scenario-paiement.js"
   },
   "keywords": [],
