@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../theme';
@@ -207,6 +208,17 @@ export default function MesGaranties() {
                     </Text>
                     <Text style={[s.carteInfo, { fontSize: 12 }]}>Touchez pour l'historique et le texte accepte</Text>
 
+                    {g.montantUtilise > 0 && (
+                      <Bouton
+                        titre="Contester un prelevement"
+                        icone="exclamation-circle"
+                        variante="secondaire"
+                        onPress={() => navigation.navigate('Contester', {
+                          objetType: 'garantie', objetId: g.id,
+                          resume: `${type.libelle} : ${fcfa(g.montantUtilise)} preleves sur ${fcfa(g.montantInitial)}`,
+                        })}
+                      />
+                    )}
                     {rendable && (
                       <Bouton
                         titre={`Recuperer ${fcfa(g.restant)}`}

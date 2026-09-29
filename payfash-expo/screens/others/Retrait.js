@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import {
-  View, Text, SafeAreaView, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator,
-} from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../theme';

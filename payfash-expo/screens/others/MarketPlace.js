@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from "../../utils/axiosApi"; // ton fichier avec axios + AsyncStorage
 
 export default function PlansScreen({ navigation }) {
@@ -39,9 +40,9 @@ export default function PlansScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+      <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color="#4F46E5" />
-      </View>
+      </SafeAreaView>
     );
   }
 

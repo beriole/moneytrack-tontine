@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Selecteur from "../../components/Selecteur";
 import { AntDesign } from '@expo/vector-icons';
 import api from "../../utils/axiosApi"; 
 
@@ -43,7 +44,7 @@ export default function AjoutEpargne({ navigation, route }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <AntDesign
           name="arrow-left"
@@ -67,19 +68,16 @@ export default function AjoutEpargne({ navigation, route }) {
       )}
 
       <Text style={styles.label}>Portefeuille source</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={source}
-          onValueChange={(itemValue) => setSource(itemValue)}
-          dropdownIconColor="#000"
-          style={styles.picker}
-        >
-          <Picker.Item label="-- Choisir --" value="" />
-          <Picker.Item label="Portefeuille Courant" value="courant" />
-          <Picker.Item label="Portefeuille Épargne" value="epargne" />
-          <Picker.Item label="Portefeuille Projet" value="projet" />
-        </Picker>
-      </View>
+      <Selecteur
+        valeur={source}
+        onChange={setSource}
+        titre="Portefeuille source"
+        options={[
+          { valeur: 'courant', libelle: 'Portefeuille courant' },
+          { valeur: 'epargne', libelle: 'Portefeuille epargne' },
+          { valeur: 'projet', libelle: 'Portefeuille projet' },
+        ]}
+      />
 
       <Text style={styles.label}>Montant à ajouter</Text>
       <TextInput
@@ -97,7 +95,7 @@ export default function AjoutEpargne({ navigation, route }) {
           <Text style={styles.buttonText}>Valider</Text>
         )}
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

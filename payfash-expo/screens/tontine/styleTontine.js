@@ -57,6 +57,11 @@ export const statutCouleur = {
   partiellement_utilisee: colors.warning,
   totalement_utilisee: colors.danger,
   liberee: colors.textMuted,
+  // Litiges
+  'en attente': colors.warning,
+  'en cours': colors.accent,
+  'résolu': colors.success,
+  'rejeté': colors.danger,
 };
 
 export const libelleStatut = {
@@ -92,6 +97,10 @@ export const libelleStatut = {
   partiellement_utilisee: 'Entamee',
   totalement_utilisee: 'Consommee',
   liberee: 'Liberee',
+  'en attente': 'Recu',
+  'en cours': 'En examen',
+  'résolu': 'Resolu',
+  'rejeté': 'Rejete',
 };
 
 export default StyleSheet.create({

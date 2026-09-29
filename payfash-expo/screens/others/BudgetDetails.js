@@ -1,9 +1,7 @@
 // BudgetDetails.js
 import React, { useState } from "react";
-import { 
-  View, Text, SafeAreaView, ScrollView, StyleSheet, 
-  Dimensions, TouchableOpacity, Modal, TextInput, Alert 
-} from "react-native";
+import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PieChart } from "react-native-chart-kit";
 import * as Progress from "react-native-progress";
 import { useNavigation } from "@react-navigation/native";

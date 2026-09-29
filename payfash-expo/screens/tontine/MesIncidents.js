@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AntDesign } from '@expo/vector-icons';
 import { colors } from '../../theme';
@@ -110,6 +111,15 @@ export default function MesIncidents() {
                   onPress={() => regler(i)}
                 />
               )}
+              <Bouton
+                titre="Contester"
+                icone="exclamation-circle"
+                variante="secondaire"
+                onPress={() => navigation.navigate('Contester', {
+                  objetType: 'incident', objetId: i.id,
+                  resume: `${i.groupe || 'Tontine'} : ${fcfa(i.resteDu)} restants sur ${fcfa(i.montantInitial)}`,
+                })}
+              />
             </View>
           ))
         )}

@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import {
-  View, Text, SafeAreaView, ScrollView, TextInput, TouchableOpacity,
-  Alert, Linking, ActivityIndicator, AppState,
-} from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Linking, ActivityIndicator, AppState } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

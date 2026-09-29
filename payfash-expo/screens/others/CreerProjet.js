@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, 
   FlatList, Alert, StyleSheet, Platform, ActivityIndicator
 } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AntDesign } from '@expo/vector-icons';
 import api from "../../utils/axiosApi";
@@ -95,7 +96,7 @@ export default function CreateProjet({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Créer un Projet</Text>
 
       <TextInput
@@ -197,7 +198,7 @@ export default function CreateProjet({ navigation }) {
       >
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Créer Projet</Text>}
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

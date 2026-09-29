@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from "../../utils/axiosApi";
 
 export default function DetailEpargne({ route, navigation }) {
@@ -26,9 +27,9 @@ export default function DetailEpargne({ route, navigation }) {
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+      <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color="#fff" />
-      </View>
+      </SafeAreaView>
     );
   }
 

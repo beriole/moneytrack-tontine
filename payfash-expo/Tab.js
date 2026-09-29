@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FontAwesome5 } from '@expo/vector-icons';
 import Profile from './screens/profils/Profile';
 import { StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Epargne from './screens/others/Epargne';
 // MarketPlace est desormais rendu par CommunauteTabs
 import CommunauteTabs from './screens/tontine/CommunauteTabs';
@@ -13,12 +14,15 @@ import BudgetProjetTabs from './screens/others/BudgetProjetTabs';
 import ChatbotScreen from './screens/others/ChatbotScreen';
 export default function Maintabs(){
   const tab= createBottomTabNavigator();
+  // Depuis Expo 54, l'affichage est bord a bord sur Android : la barre
+  // d'onglets se glissait sous la barre de navigation du telephone.
+  const marges = useSafeAreaInsets();
 return(
     <tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { height: 70 + marges.bottom, paddingBottom: 8 + marges.bottom }],
         tabBarActiveTintColor: "#4F46E5", // bleu logo
         tabBarInactiveTintColor: "#CCC", // gris clair
       }}

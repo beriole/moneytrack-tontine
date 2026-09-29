@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, Text, SafeAreaView, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StyleSheet, ActivityIndicator 
-} from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Selecteur from "../../components/Selecteur";
 import { useNavigation } from "@react-navigation/native";
 import { AntDesign } from '@expo/vector-icons';
 import api from "../../utils/axiosApi";
@@ -141,49 +139,37 @@ export default function Depense() {
         </View>
 
         <Text style={styles.label}>Type de contexte</Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={typeContexte}
-            onValueChange={val => {
-              setTypeContexte(val);
-              setContexte("");
-            }}
-            style={styles.picker}
-          >
-            <Picker.Item label="Budget" value="budget" />
-            <Picker.Item label="Projet" value="projet" />
-          </Picker>
-        </View>
+        <Selecteur
+          valeur={typeContexte}
+          onChange={(val) => { setTypeContexte(val); setContexte(""); }}
+          titre="Type de contexte"
+          options={[
+            { valeur: 'budget', libelle: 'Budget' },
+            { valeur: 'projet', libelle: 'Projet' },
+          ]}
+        />
 
         <Text style={styles.label}>
           {typeContexte === "budget" ? "Choisir un budget" : "Choisir un projet"}
         </Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={contexte}
-            onValueChange={val => setContexte(val)}
-            style={styles.picker}
-          >
-            <Picker.Item label="Sélectionner..." value="" />
-            {typeContexte === "budget"
-              ? budgets.map(b => <Picker.Item key={b.id} label={b.nom} value={b.id} />)
-              : projets.map(p => <Picker.Item key={p.id} label={p.nom} value={p.id} />)}
-          </Picker>
-        </View>
+        <Selecteur
+          valeur={contexte}
+          onChange={setContexte}
+          placeholder="Sélectionner..."
+          titre={typeContexte === "budget" ? "Choisir un budget" : "Choisir un projet"}
+          options={(typeContexte === "budget" ? budgets : projets).map((x) => ({
+            valeur: x.id, libelle: x.nom,
+          }))}
+        />
 
         <Text style={styles.label}>Catégorie de dépense</Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={categorie}
-            onValueChange={val => setCategorie(val)}
-            style={styles.picker}
-          >
-            <Picker.Item label="Sélectionner une catégorie" value="" />
-            {categories.map(c => (
-              <Picker.Item key={c.id} label={c.nomCategorie || c.nom} value={c.id} />
-            ))}
-          </Picker>
-        </View>
+        <Selecteur
+          valeur={categorie}
+          onChange={setCategorie}
+          placeholder="Sélectionner une catégorie"
+          titre="Catégorie de dépense"
+          options={categories.map((c) => ({ valeur: c.id, libelle: c.nomCategorie || c.nom }))}
+        />
 
         <Text style={styles.label}>Montant</Text>
         <TextInput

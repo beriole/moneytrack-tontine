@@ -1,6 +1,7 @@
 // TransactionsCategorieProjet.js
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from "../../utils/axiosApi"; // ton instance axios
 
 export default function TransactionsCategorieProjet({ route }) {
@@ -27,7 +28,7 @@ export default function TransactionsCategorieProjet({ route }) {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Transactions - {nomCategorie}</Text>
       {transactions.length > 0 ? (
         <FlatList
@@ -44,7 +45,7 @@ export default function TransactionsCategorieProjet({ route }) {
       ) : (
         <Text style={styles.noData}>Aucune transaction enregistrée</Text>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -1,8 +1,6 @@
 import React, { useState } from "react";
-import { 
-  View, Text, SafeAreaView, ScrollView, 
-  TouchableOpacity, TextInput, StyleSheet, Alert, Platform 
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AntDesign } from '@expo/vector-icons';
 import DateTimePicker from "@react-native-community/datetimepicker";
 import axios from "axios";

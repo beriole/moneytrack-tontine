@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Selecteur from '../../components/Selecteur';
 import { AntDesign } from '@expo/vector-icons';
 import axios from 'axios';
 import api from '../../utils/axiosApi';
@@ -43,41 +44,35 @@ export default function TransfertFonds({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <AntDesign name="arrow-left" size={28} color="white" onPress={() => navigation.goBack()} />
         <Text style={styles.headerText}>Transfert de fonds</Text>
       </View>
 
       <Text style={styles.label}>Portefeuille source</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={source}
-          onValueChange={(itemValue) => setSource(itemValue)}
-          style={styles.picker}
-          dropdownIconColor="#FFF"
-        >
-          <Picker.Item label="-- Choisir --" value={null} />
-          <Picker.Item label="Portefeuille Courant" value="courant" />
-          <Picker.Item label="Portefeuille Épargne" value="epargne" />
-          <Picker.Item label="Portefeuille Projet" value="projet" />
-        </Picker>
-      </View>
+      <Selecteur
+        valeur={source}
+        onChange={setSource}
+        titre="Portefeuille source"
+        options={[
+          { valeur: 'courant', libelle: 'Portefeuille courant' },
+          { valeur: 'epargne', libelle: 'Portefeuille epargne' },
+          { valeur: 'projet', libelle: 'Portefeuille projet' },
+        ]}
+      />
 
       <Text style={styles.label}>Portefeuille destination</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={destination}
-          onValueChange={(itemValue) => setDestination(itemValue)}
-          style={styles.picker}
-          dropdownIconColor="#FFF"
-        >
-          <Picker.Item label="-- Choisir --" value={null} />
-          <Picker.Item label="Portefeuille Courant" value="courant" />
-          <Picker.Item label="Portefeuille Épargne" value="epargne" />
-          <Picker.Item label="Portefeuille Projet" value="projet" />
-        </Picker>
-      </View>
+      <Selecteur
+        valeur={destination}
+        onChange={setDestination}
+        titre="Portefeuille destination"
+        options={[
+          { valeur: 'courant', libelle: 'Portefeuille courant' },
+          { valeur: 'epargne', libelle: 'Portefeuille epargne' },
+          { valeur: 'projet', libelle: 'Portefeuille projet' },
+        ]}
+      />
 
       <Text style={styles.label}>Montant à transférer</Text>
       <TextInput
@@ -91,7 +86,7 @@ export default function TransfertFonds({ navigation }) {
       <TouchableOpacity style={styles.button} onPress={handleValidation}>
         <Text style={styles.buttonText}>Valider</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

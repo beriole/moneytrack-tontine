@@ -1,12 +1,13 @@
 import { useNavigation } from '@react-navigation/native';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AntDesign } from '@expo/vector-icons';
 
 export default function SuccesTransfert() {
     const Navigation=useNavigation();
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
 
       <View style={styles.iconContainer}>
         <AntDesign name="check-circle" size={90} color="#4CAF50" />
@@ -25,7 +26,7 @@ export default function SuccesTransfert() {
       >
         <Text style={styles.buttonText}>Retour à l'accueil</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

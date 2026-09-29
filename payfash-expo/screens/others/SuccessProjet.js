@@ -1,10 +1,11 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AntDesign } from '@expo/vector-icons';
 
 export default function SuccessProjet({ navigation }) {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.iconWrapper}>
         <AntDesign name="check-circle" size={120} color="#16A34A" />
       </View>
@@ -19,7 +20,7 @@ export default function SuccessProjet({ navigation }) {
       >
         <Text style={styles.btnText}>Retour à l'accueil</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

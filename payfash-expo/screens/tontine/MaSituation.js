@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AntDesign, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../theme';
@@ -110,6 +111,15 @@ export default function MaSituation() {
         ))}
 
         <Info texte={risque.note} />
+
+        <TouchableOpacity onPress={() => navigation.navigate('MesLitiges')} activeOpacity={0.85} style={[s.carte, { flexDirection: 'row', alignItems: 'center' }]}>
+          <MaterialCommunityIcons name="scale-balance" size={22} color={colors.accent} style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.carteTitre}>Mes litiges</Text>
+            <Text style={s.carteInfo}>Contester une operation, suivre les reponses</Text>
+          </View>
+          <AntDesign name="right" size={14} color={colors.textMuted} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

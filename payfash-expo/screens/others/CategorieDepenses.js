@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from "../../utils/axiosApi"; // ton axios instance
 
 export default function CategorieDepenses({ route }) {
@@ -23,9 +24,9 @@ export default function CategorieDepenses({ route }) {
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+      <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color="#36A2EB" />
-      </View>
+      </SafeAreaView>
     );
   }
 

@@ -1,12 +1,13 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SuccesSouscription({ navigation, route }) {
   const { plan, numero, payToken, status } = route.params;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <SafeAreaView contentContainerStyle={styles.container}>
       <View style={styles.iconContainer}>
         <Ionicons name="checkmark" size={60} color="#fff" />
       </View>
@@ -35,7 +36,7 @@ export default function SuccesSouscription({ navigation, route }) {
       >
         <Text style={styles.primaryText}>Retour aux plans</Text>
       </TouchableOpacity>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 

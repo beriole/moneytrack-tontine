@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SuccesAjoutEpargne({ navigation, route }) {
@@ -9,7 +10,7 @@ export default function SuccesAjoutEpargne({ navigation, route }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.iconContainer}>
         <Ionicons name="checkmark" size={60} color="white" />
       </View>
@@ -35,7 +36,7 @@ export default function SuccesAjoutEpargne({ navigation, route }) {
       >
         <Text style={styles.secondaryText}>Retour à l’accueil</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

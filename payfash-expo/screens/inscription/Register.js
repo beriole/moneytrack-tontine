@@ -1,4 +1,5 @@
-import { View, Text, SafeAreaView, Image, ImageBackground, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Image, ImageBackground, TouchableOpacity, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from 'react';
 import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';

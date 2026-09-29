@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { 
-  View, Text, SafeAreaView, ScrollView, 
-  TouchableOpacity, StyleSheet, ActivityIndicator, Alert 
-} from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { AntDesign } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";

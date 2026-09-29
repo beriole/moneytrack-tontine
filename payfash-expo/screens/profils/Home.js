@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  View, Text, SafeAreaView, Image, StyleSheet, Animated,
-  TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl,
-} from 'react-native';
+import { View, Text, Image, StyleSheet, Animated, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome as Icon, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';

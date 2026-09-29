@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, StyleSheet } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AntDesign } from '@expo/vector-icons';
 import axios from "axios";
 import API_BASE_URL from "../../utils/config";
@@ -68,7 +69,7 @@ export default function CreateBudget({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Créer un Budget</Text>
 
       <TextInput
@@ -133,7 +134,7 @@ export default function CreateBudget({ navigation }) {
       <TouchableOpacity style={styles.submitBtn} onPress={creerBudget}>
         <Text style={styles.submitText}>Créer Budget</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 

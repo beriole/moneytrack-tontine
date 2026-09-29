@@ -141,6 +141,13 @@ export const politiqueRecouvrement = (groupeId) => api.get(`/tontine/groupes/${g
 export const regulariserCotisation = (cotisationId, montant) =>
   api.post(`/tontine/cotisations/${cotisationId}/regulariser`, montant ? { montant } : {});
 
+// Litiges : contester une operation. Le serveur conserve lui-meme les
+// preuves ; l'application n'envoie que l'operation visee et le recit.
+export const objetsLitige = () => api.get('/tontine/litiges/objets');
+export const mesLitiges = () => api.get('/tontine/litiges/mes-litiges');
+export const ouvrirLitige = (objetType, objetId, description) =>
+  api.post('/tontine/litiges', { objetType, objetId, description });
+
 export const mesCautions = () => api.get('/tontine/cautions/mes-cautions');
 export const bloquerCaution = (groupeId, montant) => api.post(`/tontine/groupes/${groupeId}/caution`, montant ? { montant } : {});
 export const cautionsGroupe = (groupeId) => api.get(`/tontine/groupes/${groupeId}/cautions`);
