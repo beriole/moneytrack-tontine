@@ -40,7 +40,7 @@ const BudgetCollaborator = db.define("BudgetCollaborator", {
         comment: "Permission de faire des dépenses"
     },
     limiteDepense: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Limite de dépense pour ce collaborateur"
     },

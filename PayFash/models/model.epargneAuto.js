@@ -37,14 +37,14 @@ const EpargneAutomatique = db.define('EpargneAutomatique', {
     
     // Pour montant fixe
     montantFixe: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Montant à déposer automatiquement"
     },
     
     // Pourcentage du dépôt
     pourcentageDepot: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(7, 4),
         allowNull: true,
         comment: "Pourcentage du montant du dépôt"
     },
@@ -66,12 +66,12 @@ const EpargneAutomatique = db.define('EpargneAutomatique', {
     
     // Limites
     depotMinimal: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Dépôt minimum pour activer l'arrondi"
     },
     depotMaximal: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Montant maximum par arrondi"
     },
@@ -85,7 +85,7 @@ const EpargneAutomatique = db.define('EpargneAutomatique', {
     
     // Suivi
     totalEpargne: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
         comment: "Total économisé depuis le début"

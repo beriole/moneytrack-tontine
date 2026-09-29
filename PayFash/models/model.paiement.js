@@ -9,7 +9,7 @@ const Paiement = db.define("Paiement", {
         defaultValue: "achat"
     },
     montant: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     date: {

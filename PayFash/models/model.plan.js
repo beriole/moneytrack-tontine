@@ -12,7 +12,7 @@ const Produit=db.define("Plan",{
         allownull:false
     },
     prix:{
-        type:DataTypes.FLOAT,
+        type:DataTypes.DECIMAL(15, 2),
         allowNull:false
     }
 },

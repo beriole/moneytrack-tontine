@@ -18,7 +18,14 @@ const db = new Sequelize(DATABASE, DBUSER, DBPASSWORD, {
     host: DBHOST,
     port: DBPORT,
     dialect: DIALECT,
-    logging: false
+    logging: false,
+    dialectOptions: {
+        // L'argent est stocke en DECIMAL (section 46). Sans ce reglage, le
+        // pilote rend les decimaux en CHAINES : « 1000 » + 500 donnerait
+        // « 1000500 ». Avec, ils reviennent en nombres, comme du temps des
+        // flottants — mais c'est la base qui garde le centime exact.
+        decimalNumbers: true
+    }
 });
 
 module.exports = db;

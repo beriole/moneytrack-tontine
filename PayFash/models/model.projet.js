@@ -7,7 +7,7 @@ const Projet=db.define("Projet",{
         allowNull:false,
     },
     budgetTotall:{
-        type:DataTypes.FLOAT,
+        type:DataTypes.DECIMAL(15, 2),
         allowNull:false
     },
     etat:{
@@ -54,12 +54,12 @@ const Projet=db.define("Projet",{
     
     // Suivi financier
     montantDepense: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0
     },
     montantBloque: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0
     },

@@ -8,7 +8,7 @@ const Portefeuille = db.define("Portefeuille", {
         comment: "Nom personnalisé du portefeuille"
     },
     solde: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0
     },
@@ -50,7 +50,7 @@ const Portefeuille = db.define("Portefeuille", {
         comment: "Statut du portefeuille"
     },
     objectifMontant: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Montant objectif pour l'épargne"
     },

@@ -8,7 +8,7 @@ const budgetCategorie = db.define("budgetCategorie", {
         autoIncrement: true
     },
     montant: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false
     }
 }, {

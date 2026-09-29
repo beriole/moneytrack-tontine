@@ -6,8 +6,8 @@ const Epargne = db.define('Epargne', {
   objectif: { type: DataTypes.STRING, allowNull: false },
   date_debut: { type: DataTypes.DATE, allowNull: false },
   date_fin: { type: DataTypes.DATE },
-  montant_total: { type: DataTypes.FLOAT, allowNull: false },
-  montant_cumule: { type: DataTypes.FLOAT, defaultValue: 0 },
+  montant_total: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+  montant_cumule: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
   statut: { type: DataTypes.ENUM('en cours', 'termine', 'en pause', 'annule'), defaultValue: 'en cours' },
   
   // ============================================
@@ -16,19 +16,19 @@ const Epargne = db.define('Epargne', {
   
   // Taux d'intérêt
   tauxInteret: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(7, 4),
     allowNull: false,
     defaultValue: 0,
     comment: "Taux d'intérêt annuel en pourcentage"
   },
   interetCumule: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
     defaultValue: 0,
     comment: "Intérêts générés"
   },
   capitalInitial: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     comment: "Montant initial du dépôt"
   },
@@ -64,7 +64,7 @@ const Epargne = db.define('Epargne', {
     comment: "Fréquence automatique des dépôts"
   },
   montantRecurrent: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     comment: "Montant du dépôt automatique"
   },

@@ -33,13 +33,13 @@ const Milestone = db.define("Milestone", {
         allowNull: true
     },
     budgetAlloue: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
         comment: "Budget alloué pour ce jalon"
     },
     depenses: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
         comment: "Dépenses réelles pour ce jalon"

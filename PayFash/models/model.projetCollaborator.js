@@ -37,11 +37,11 @@ const ProjetCollaborator = db.define("ProjetCollaborator", {
         defaultValue: false
     },
     limiteDepense: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true
     },
     contribution: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
         comment: "Montant contribué au projet"

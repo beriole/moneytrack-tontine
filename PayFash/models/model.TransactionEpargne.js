@@ -3,7 +3,7 @@ const db=require('../config/bd');
 
 const TransactionEpargne = db.define('TransactionEpargne', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  montant: { type: DataTypes.FLOAT, allowNull: false },
+  montant: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
   date_transaction: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   description: { type: DataTypes.STRING }
 }, {

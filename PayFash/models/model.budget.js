@@ -7,7 +7,7 @@ const Budget = db.define("Budget", {
         allowNull: false
     },
     montantAllouer: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false
     },
     periodeDebut: {
@@ -66,7 +66,7 @@ const Budget = db.define("Budget", {
     },
     // Montants réels dépensés
     montantDepense: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0
     },
