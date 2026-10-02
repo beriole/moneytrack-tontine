@@ -169,7 +169,15 @@ export default function Retrait() {
 
         <View style={s.carte}>
           <Ligne label="Solde total" valeur={fcfa(brut)} />
-          {solde && <Ligne label="Engagé sous 30 jours" valeur={fcfa(solde.engage30j)} couleur={colors.warning} />}
+          {solde && (
+            <Ligne
+              label={solde.engageAvant
+                ? `Engagé d'ici le ${new Date(solde.engageAvant).toLocaleDateString('fr-FR')}`
+                : 'Engagé prochainement'}
+              valeur={fcfa(solde.engage30j)}
+              couleur={colors.warning}
+            />
+          )}
           {solde && <Ligne label="Immobilisé (cautions)" valeur={fcfa(solde.immobilise)} couleur={colors.accent} />}
           <Ligne label="Retirable sans risque" valeur={fcfa(retirable)} couleur={colors.success} dernier />
         </View>

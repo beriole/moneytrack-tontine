@@ -31,7 +31,24 @@ const EcheancierService = require('./echeancier.service');
 //  ton projet moto ».
 // =====================================================================
 
-const HORIZON_COURT = 30;   // jours
+const HORIZON_COURT = 30;   // jours, plancher de l'horizon court
+
+/**
+ * Jusqu'ou porte « ce que je dois bientot ».
+ *
+ * C'etait 30 jours fixes. Une tontine mensuelle demarree un 2 octobre
+ * appelle sa cotisation suivante le 2 novembre : 31 jours. Sept mois sur
+ * douze, la prochaine echeance tombait donc JUSTE apres l'horizon, et le
+ * retirable laissait sortir un argent deja promis. L'horizon suit
+ * desormais le mois calendaire — il couvre toujours la prochaine
+ * echeance mensuelle, qu'il y ait 28, 30 ou 31 jours.
+ */
+function finHorizonCourt(depuis = new Date()) {
+    const dansUnMois = new Date(depuis);
+    dansUnMois.setMonth(dansUnMois.getMonth() + 1);
+    const plancher = new Date(depuis.getTime() + HORIZON_COURT * 86400000);
+    return dansUnMois > plancher ? dansUnMois : plancher;
+}
 
 class SyntheseService {
 
@@ -261,9 +278,9 @@ class SyntheseService {
      * a un retrait sans dependre du reste de la synthese. Ne leve jamais :
      * un client sans tontine n'a simplement aucun engagement.
      */
-    static async engagementsSous(clientId, jours = HORIZON_COURT) {
+    static async engagementsSous(clientId, jours = null) {
         try {
-            const limite = new Date(Date.now() + jours * 86400000);
+            const limite = jours === null ? finHorizonCourt() : new Date(Date.now() + jours * 86400000);
             const sorties = await this._sorties(clientId);
             return arrondir(
                 sorties.filter(l => new Date(l.date) <= limite).reduce((s, l) => s + l.montant, 0)
@@ -298,7 +315,7 @@ class SyntheseService {
         const sorties = await this._sorties(clientId);
         const immobilise = await this._immobilise(clientId);
 
-        const limite = new Date(Date.now() + HORIZON_COURT * 86400000);
+        const limite = finHorizonCourt();
         const engageCourt = arrondir(
             sorties.filter(l => new Date(l.date) <= limite).reduce((s, l) => s + l.montant, 0)
         );
@@ -317,14 +334,15 @@ class SyntheseService {
             brut,
             soldeReglement,                             // ce qui est sur le compte debite
             exigible,                                   // du maintenant, bloque la suite
-            engage30j: engageCourt,
+            engage30j: engageCourt,                     // nom conserve : l'application le lit
+            engageAvant: limite.toISOString(),          // la date exacte de l'horizon
             engageTotal,
             immobilise: arrondir(immobilise.reduce((s, l) => s + l.montant, 0)),
             bloque,                                     // dans le brut, mais garantit une obligation
             disponible: arrondir(brut - bloque - engageCourt),   // ce qu'on peut vraiment depenser ce mois
             retirable: arrondir(Math.max(0, soldeReglement - engageCourt)), // opposable par le serveur
             alerte: brut - bloque < engageCourt
-                ? `Vos engagements des 30 prochains jours (${engageCourt}) depassent votre solde disponible (${arrondir(brut - bloque)}).`
+                ? `Vos engagements d'ici le ${limite.toLocaleDateString('fr-FR')} (${engageCourt}) depassent votre solde disponible (${arrondir(brut - bloque)}).`
                 : null
         };
     }

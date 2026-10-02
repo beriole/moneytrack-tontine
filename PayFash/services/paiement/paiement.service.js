@@ -88,7 +88,10 @@ class PaiementService {
     static async _engagements(clientId) {
         try {
             const SyntheseService = require('../tontine/synthese.service');
-            return arrondir(await SyntheseService.engagementsSous(clientId, 30));
+            // Sans argument : le meme horizon que la synthese — le mois a
+            // venir. Fige a 30 jours, le retrait laissait sortir la
+            // cotisation du mois suivant sept mois sur douze.
+            return arrondir(await SyntheseService.engagementsSous(clientId));
         } catch (e) {
             console.log('[paiement] engagements illisibles :', e.message);
             return 0;
@@ -384,7 +387,7 @@ class PaiementService {
             if (engage > 0 && somme > retirable) {
                 throw new ErreurPaiement(409,
                     `Vous pouvez retirer ${retirable} FCFA. ${engage} FCFA sont engages dans vos echeances `
-                    + `des 30 prochains jours ; les retirer vous exposerait a une amende. `
+                    + `du mois a venir ; les retirer vous exposerait a une amende. `
                     + `Renvoyez la demande avec accepterRisque: true pour passer outre.`);
             }
             await Fonds.sortie(pf, somme, t, {
