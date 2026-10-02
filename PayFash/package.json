@@ -10,7 +10,8 @@
     "test:unitaires": "node --test tests/",
     "test:scenarios": "node scripts/scenario-tontine.js && node scripts/scenario-caisse4.js && node scripts/scenario-gouvernance.js && node scripts/scenario-synchronisation.js && node scripts/scenario-notifications.js && node scripts/scenario-prelevement.js && node scripts/scenario-backoffice.js && node scripts/scenario-garanties.js && node scripts/scenario-couverture.js && node scripts/scenario-eligibilite.js && node scripts/scenario-defauts.js && node scripts/scenario-liberation.js && node scripts/scenario-risque.js && node scripts/scenario-admin-http.js && node scripts/scenario-litiges.js && node scripts/scenario-ledger.js",
     "repetition": "node scripts/scenario-demo.js",
-    "test:paiement": "node scripts/scenario-paiement.js"
+    "test:paiement": "node scripts/scenario-paiement.js",
+    "test:modules": "jest tests/modules --verbose"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +34,19 @@
     "sequelize": "^6.37.7"
   },
   "devDependencies": {
+    "jest": "^30.5.2",
     "sequelize-cli": "^6.6.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/tests/modules/*.test.js"
+    ],
+    "testTimeout": 60000,
+    "maxWorkers": 1,
+    "_commentaire": "maxWorkers 1 : la suite touche la base. reporters explicite : sans lui, Jest n'imprime le detail des tests que dans un terminal interactif",
+    "reporters": [
+      "default"
+    ]
   }
 }
